@@ -10,6 +10,9 @@
 #include "ParentRelativeAttachmentComponent.h"
 #include "VRBaseCharacter.h"
 #include "VRRootComponent.h"
+#include "Engine/NetDriver.h"
+#include "Engine/DemoNetDriver.h"
+#include "Engine/NetworkObjectList.h"
 #include "VRPlayerController.h"
 #include "GameFramework/PhysicsVolume.h"
 
@@ -115,6 +118,38 @@ void UVRBaseCharacterMovementComponent::OnMovementModeChanged(EMovementMode Prev
 				}
 			}
 		}
+		
+		if (CustomMovementMode == (uint8)EVRCustomMovementMode::VRMOVE_Physics)
+		{
+			if (UpdatedPrimitive)
+			{
+				UpdatedPrimitive->SetSimulatePhysics(true);
+				if (FBodyInstance* BodyInst = UpdatedPrimitive->GetBodyInstance())
+				{
+					BodyInst->bLockRotation = true;
+					BodyInst->bLockXRotation = true;
+					BodyInst->bLockYRotation = true;
+					BodyInst->bLockZRotation = true;
+					BodyInst->SetDOFLock(EDOFMode::Default); // Default IS 6DOF
+				}
+			}
+		}
+	}
+	
+	if (PreviousMovementMode == EMovementMode::MOVE_Custom && PreviousCustomMode == (uint8)EVRCustomMovementMode::VRMOVE_Physics)
+	{
+		if (UpdatedPrimitive)
+		{
+			UpdatedPrimitive->SetSimulatePhysics(false);
+			if (FBodyInstance* BodyInst = UpdatedPrimitive->GetBodyInstance())
+			{
+				BodyInst->bLockRotation = false;
+				BodyInst->bLockXRotation = false;
+				BodyInst->bLockYRotation = false;
+				BodyInst->bLockZRotation = false;
+				BodyInst->SetDOFLock(EDOFMode::Default);
+			}
+		}
 	}
 
 	Super::OnMovementModeChanged(PreviousMovementMode, PreviousCustomMode);
@@ -209,7 +244,96 @@ void UVRBaseCharacterMovementComponent::TickComponent(float DeltaTime, enum ELev
 					}
 				}
 				else
-					Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+				{
+					// See if we fell out of the world.
+					const bool bIsSimulatingPhysics = UpdatedComponent->IsSimulatingPhysics();
+					// We don't update if simulating physics (eg ragdolls).
+					if (bIsSimulatingPhysics && MovementMode == MOVE_Custom && CustomMovementMode == (uint8)EVRCustomMovementMode::VRMOVE_Physics)
+					{
+						const FVector InputVector = ConsumeInputVector();
+
+						if (!InputVector.IsNearlyZero())
+						{
+							int gg = 0;
+						}
+
+						if (!HasValidData() || ShouldSkipUpdate(DeltaTime))
+						{
+							return;
+						}
+
+						AvoidanceLockTimer -= DeltaTime;
+
+						if (CharacterOwner->GetLocalRole() > ROLE_SimulatedProxy)
+						{
+							//SCOPE_CYCLE_COUNTER(STAT_CharacterMovementNonSimulated);
+
+							// If we are a client we might have received an update from the server.
+							const bool bIsClient = (CharacterOwner->GetLocalRole() == ROLE_AutonomousProxy && IsNetMode(NM_Client));
+							if (bIsClient)
+							{
+								FNetworkPredictionData_Client_Character* ClientData = GetPredictionData_Client_Character();
+								if (ClientData && ClientData->bUpdatePosition)
+								{
+									ClientUpdatePositionAfterServerUpdate();
+								}
+							}
+
+							// Allow root motion to move characters that have no controller.
+							if (CharacterOwner->IsLocallyControlled() || (!CharacterOwner->Controller && bRunPhysicsWithNoController) || (!CharacterOwner->Controller && CharacterOwner->IsPlayingRootMotion()))
+							{
+								ControlledCharacterMove(InputVector, DeltaTime);
+							}
+							else if (CharacterOwner->GetRemoteRole() == ROLE_AutonomousProxy)
+							{
+								// Server ticking for remote client.
+								// Between net updates from the client we need to update position if based on another object,
+								// otherwise the object will move on intermediate frames and we won't follow it.
+								MaybeUpdateBasedMovement(DeltaTime);
+								MaybeSaveBaseLocation();
+
+								// Smooth on listen server for local view of remote clients. We may receive updates at a rate different than our own tick rate.
+								static const auto CVarNetEnableListenServerSmoothing = IConsoleManager::Get().FindConsoleVariable(TEXT("p.NetEnableListenServerSmoothing"));
+								if (CVarNetEnableListenServerSmoothing->GetBool() && !bNetworkSmoothingComplete && IsNetMode(NM_ListenServer))
+								{
+									SmoothClientPosition(DeltaTime);
+								}
+							}
+						}
+						else if (CharacterOwner->GetLocalRole() == ROLE_SimulatedProxy)
+						{
+							if (bShrinkProxyCapsule)
+							{
+								AdjustProxyCapsuleSize();
+							}
+							SimulatedTick(DeltaTime);
+						}
+
+						if (bUseRVOAvoidance)
+						{
+							UpdateDefaultAvoidance();
+						}
+
+						/*if (bEnablePhysicsInteraction)
+						{
+							SCOPE_CYCLE_COUNTER(STAT_CharPhysicsInteraction);
+							ApplyDownwardForce(DeltaTime);
+							ApplyRepulsionForce(DeltaTime);
+						}*/
+
+/*#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+						const bool bVisualizeMovement = CharacterMovementCVars::VisualizeMovement > 0;
+						if (bVisualizeMovement)
+						{
+							VisualizeMovement();
+						}
+#endif */// !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+					}
+					else
+					{
+						Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+					}
+				}
 
 
 				// This should be valid for both Simulated and owning clients as well as the server
@@ -899,6 +1023,9 @@ void UVRBaseCharacterMovementComponent::PhysCustom(float deltaTime, int32 Iterat
 		break;
 	case EVRCustomMovementMode::VRMOVE_Seated:
 		break;
+	case EVRCustomMovementMode::VRMOVE_Physics:
+		PhysCustom_Physics(deltaTime, Iterations);
+		break;
 	default:
 		Super::PhysCustom(deltaTime, Iterations);
 		break;
@@ -1150,6 +1277,46 @@ void UVRBaseCharacterMovementComponent::PhysCustom_LowGrav(float deltaTime, int3
 	}
 }
 
+void UVRBaseCharacterMovementComponent::PhysCustom_Physics(float deltaTime, int32 Iterations)
+{
+
+	if (deltaTime < MIN_TICK_TIME)
+	{
+		return;
+	}
+
+	if (UpdatedPrimitive)
+	{
+		Velocity = UpdatedPrimitive->GetPhysicsLinearVelocity();
+	}
+
+	// Skip calling into BP if we aren't locally controlled
+	/*if (CharacterOwner->IsLocallyControlled())
+	{
+		// Allow the player to run updates on the push logic for CustomVRInputVector
+		if (AVRBaseCharacter* characterOwner = Cast<AVRBaseCharacter>(CharacterOwner))
+		{
+			characterOwner->UpdateLowGravMovement(deltaTime);
+		}
+	}*/
+
+	float Friction = 0.0f;
+	CalcVelocity(deltaTime, Friction, false, 0.0f);
+
+	// Rewind the players position by the new capsule location
+	//RewindVRRelativeMovement();
+
+	//RestorePreAdditiveVRMotionVelocity();
+
+
+	//ApplyVRMotionToVelocity(deltaTime);
+
+	if (UpdatedPrimitive)
+	{
+		UpdatedPrimitive->SetPhysicsLinearVelocity(Velocity);
+	}
+}
+
 
 void UVRBaseCharacterMovementComponent::SetClimbingMode(bool bIsClimbing)
 {
@@ -1341,7 +1508,14 @@ void UVRBaseCharacterMovementComponent::PerformMovement(float DeltaSeconds)
 	// Clear out this flag prior to movement so we can see if it gets changed
 	bIsInPushBack = false;
 
-	Super::PerformMovement(DeltaSeconds);
+	if (MovementMode == EMovementMode::MOVE_Custom && CustomMovementMode == (uint8)EVRCustomMovementMode::VRMOVE_Physics)
+	{
+		PerformPhysicsMovement(DeltaSeconds);
+	}
+	else
+	{
+		Super::PerformMovement(DeltaSeconds);
+	}
 
 	EndPushBackNotification(); // Check if we need to notify of ending pushback
 
@@ -1353,6 +1527,323 @@ void UVRBaseCharacterMovementComponent::PerformMovement(float DeltaSeconds)
 	if (CharacterOwner->GetLocalRole() == ROLE_Authority)
 	{
 		MoveActionArray.Clear();
+	}
+}
+
+void UVRBaseCharacterMovementComponent::PerformPhysicsMovement(float DeltaSeconds)
+{
+	const UWorld* MyWorld = GetWorld();
+	if (!HasValidData() || MyWorld == nullptr)
+	{
+		return;
+	}
+
+	// no movement if we can't move, or if currently doing physical simulation on UpdatedComponent
+	if (MovementMode == MOVE_None || UpdatedComponent->Mobility != EComponentMobility::Movable || (UpdatedComponent->IsSimulatingPhysics() && (MovementMode != EMovementMode::MOVE_Custom || CustomMovementMode != (uint8)EVRCustomMovementMode::VRMOVE_Physics)))
+	{
+		if (!CharacterOwner->bClientUpdating && !CharacterOwner->bServerMoveIgnoreRootMotion)
+		{
+			// Consume root motion
+			if (CharacterOwner->IsPlayingRootMotion() && CharacterOwner->GetMesh())
+			{
+				TickCharacterPose(DeltaSeconds);
+				RootMotionParams.Clear();
+			}
+			if (CurrentRootMotion.HasActiveRootMotionSources())
+			{
+				CurrentRootMotion.Clear();
+			}
+		}
+		// Clear pending physics forces
+		ClearAccumulatedForces();
+		return;
+	}
+
+	// Force floor update if we've moved outside of CharacterMovement since last update.
+	bForceNextFloorCheck |= (IsMovingOnGround() && UpdatedComponent->GetComponentLocation() != LastUpdateLocation);
+
+	// Update saved LastPreAdditiveVelocity with any external changes to character Velocity that happened since last update.
+	if (CurrentRootMotion.HasAdditiveVelocity())
+	{
+		const FVector Adjustment = (Velocity - LastUpdateVelocity);
+		CurrentRootMotion.LastPreAdditiveVelocity += Adjustment;
+
+	}
+
+	FVector OldVelocity;
+	FVector OldLocation;
+
+	// Scoped updates can improve performance of multiple MoveComponent calls.
+	{
+		FScopedMovementUpdate ScopedMovementUpdate(UpdatedComponent, bEnableScopedMovementUpdates ? EScopedUpdate::DeferredUpdates : EScopedUpdate::ImmediateUpdates);
+
+		MaybeUpdateBasedMovement(DeltaSeconds);
+
+		// Clean up invalid RootMotion Sources.
+		// This includes RootMotion sources that ended naturally.
+		// They might want to perform a clamp on velocity or an override, 
+		// so we want this to happen before ApplyAccumulatedForces and HandlePendingLaunch as to not clobber these.
+		const bool bHasRootMotionSources = HasRootMotionSources();
+		if (bHasRootMotionSources && !CharacterOwner->bClientUpdating && !CharacterOwner->bServerMoveIgnoreRootMotion)
+		{
+			//SCOPE_CYCLE_COUNTER(STAT_CharacterMovementRootMotionSourceCalculate);
+
+			const FVector VelocityBeforeCleanup = Velocity;
+			CurrentRootMotion.CleanUpInvalidRootMotion(DeltaSeconds, *CharacterOwner, *this);
+		}
+
+		OldVelocity = Velocity;
+		OldLocation = UpdatedComponent->GetComponentLocation();
+
+		ApplyAccumulatedForces(DeltaSeconds);
+
+		// Update the character state before we do our movement
+		UpdateCharacterStateBeforeMovement(DeltaSeconds);
+
+		if (MovementMode == MOVE_NavWalking && bWantsToLeaveNavWalking)
+		{
+			TryToLeaveNavWalking();
+		}
+
+		// Character::LaunchCharacter() has been deferred until now.
+		HandlePendingLaunch();
+		ClearAccumulatedForces();
+
+		// Update saved LastPreAdditiveVelocity with any external changes to character Velocity that happened due to ApplyAccumulatedForces/HandlePendingLaunch
+		if (CurrentRootMotion.HasAdditiveVelocity())
+		{
+			const FVector Adjustment = (Velocity - OldVelocity);
+			CurrentRootMotion.LastPreAdditiveVelocity += Adjustment;
+		}
+
+		// Prepare Root Motion (generate/accumulate from root motion sources to be used later)
+		if (bHasRootMotionSources && !CharacterOwner->bClientUpdating && !CharacterOwner->bServerMoveIgnoreRootMotion)
+		{
+			// Animation root motion - If using animation RootMotion, tick animations before running physics.
+			if (CharacterOwner->IsPlayingRootMotion() && CharacterOwner->GetMesh())
+			{
+				TickCharacterPose(DeltaSeconds);
+
+				// Make sure animation didn't trigger an event that destroyed us
+				if (!HasValidData())
+				{
+					return;
+				}
+
+				// For local human clients, save off root motion data so it can be used by movement networking code.
+				if (CharacterOwner->IsLocallyControlled() && (CharacterOwner->GetLocalRole() == ROLE_AutonomousProxy) && CharacterOwner->IsPlayingNetworkedRootMotionMontage())
+				{
+					CharacterOwner->ClientRootMotionParams = RootMotionParams;
+				}
+			}
+
+			// Generates root motion to be used this frame from sources other than animation
+			{
+				//SCOPE_CYCLE_COUNTER(STAT_CharacterMovementRootMotionSourceCalculate);
+				CurrentRootMotion.PrepareRootMotion(DeltaSeconds, *CharacterOwner, *this, true);
+			}
+
+			// For local human clients, save off root motion data so it can be used by movement networking code.
+			if (CharacterOwner->IsLocallyControlled() && (CharacterOwner->GetLocalRole() == ROLE_AutonomousProxy))
+			{
+				CharacterOwner->SavedRootMotion = CurrentRootMotion;
+			}
+		}
+
+		// Apply Root Motion to Velocity
+		if (CurrentRootMotion.HasOverrideVelocity() || HasAnimRootMotion())
+		{
+			// Animation root motion overrides Velocity and currently doesn't allow any other root motion sources
+			if (HasAnimRootMotion())
+			{
+				// Convert to world space (animation root motion is always local)
+				USkeletalMeshComponent* SkelMeshComp = CharacterOwner->GetMesh();
+				if (SkelMeshComp)
+				{
+					// Convert Local Space Root Motion to world space. Do it right before used by physics to make sure we use up to date transforms, as translation is relative to rotation.
+					RootMotionParams.Set(ConvertLocalRootMotionToWorld(RootMotionParams.GetRootMotionTransform()));
+				}
+
+				// Then turn root motion to velocity to be used by various physics modes.
+				if (DeltaSeconds > 0.f)
+				{
+					AnimRootMotionVelocity = CalcAnimRootMotionVelocity(RootMotionParams.GetRootMotionTransform().GetTranslation(), DeltaSeconds, Velocity);
+					Velocity = ConstrainAnimRootMotionVelocity(AnimRootMotionVelocity, Velocity);
+				}
+			}
+			else
+			{
+				// We don't have animation root motion so we apply other sources
+				if (DeltaSeconds > 0.f)
+				{
+					//SCOPE_CYCLE_COUNTER(STAT_CharacterMovementRootMotionSourceApply);
+
+					const FVector VelocityBeforeOverride = Velocity;
+					FVector NewVelocity = Velocity;
+					CurrentRootMotion.AccumulateOverrideRootMotionVelocity(DeltaSeconds, *CharacterOwner, *this, NewVelocity);
+					Velocity = NewVelocity;
+				}
+			}
+		}
+
+		// NaN tracking
+		//devCode(ensureMsgf(!Velocity.ContainsNaN(), TEXT("UCharacterMovementComponent::PerformMovement: Velocity contains NaN (%s)\n%s"), *GetPathNameSafe(this), *Velocity.ToString()));
+
+		// Clear jump input now, to allow movement events to trigger it for next update.
+		CharacterOwner->ClearJumpInput(DeltaSeconds);
+		NumJumpApexAttempts = 0;
+
+		// change position
+		StartNewPhysics(DeltaSeconds, 0);
+
+		if (!HasValidData())
+		{
+			return;
+		}
+
+		// Update character state based on change from movement
+		UpdateCharacterStateAfterMovement(DeltaSeconds);
+
+		if ((bAllowPhysicsRotationDuringAnimRootMotion || !HasAnimRootMotion()) && !CharacterOwner->IsMatineeControlled())
+		{
+			PhysicsRotation(DeltaSeconds);
+		}
+
+		// Apply Root Motion rotation after movement is complete.
+		if (HasAnimRootMotion())
+		{
+			const FQuat OldActorRotationQuat = UpdatedComponent->GetComponentQuat();
+			const FQuat RootMotionRotationQuat = RootMotionParams.GetRootMotionTransform().GetRotation();
+			if (!RootMotionRotationQuat.IsIdentity())
+			{
+				const FQuat NewActorRotationQuat = RootMotionRotationQuat * OldActorRotationQuat;
+				MoveUpdatedComponent(FVector::ZeroVector, NewActorRotationQuat, true);
+			}
+
+			// Root Motion has been used, clear
+			RootMotionParams.Clear();
+		}
+		else if (CurrentRootMotion.HasActiveRootMotionSources())
+		{
+			FQuat RootMotionRotationQuat;
+			if (CharacterOwner && UpdatedComponent && CurrentRootMotion.GetOverrideRootMotionRotation(DeltaSeconds, *CharacterOwner, *this, RootMotionRotationQuat))
+			{
+				const FQuat OldActorRotationQuat = UpdatedComponent->GetComponentQuat();
+				const FQuat NewActorRotationQuat = RootMotionRotationQuat * OldActorRotationQuat;
+				MoveUpdatedComponent(FVector::ZeroVector, NewActorRotationQuat, true);
+			}
+		}
+
+		// consume path following requested velocity
+		bHasRequestedVelocity = false;
+
+		OnMovementUpdated(DeltaSeconds, OldLocation, OldVelocity);
+	} // End scoped movement update
+
+	// Call external post-movement events. These happen after the scoped movement completes in case the events want to use the current state of overlaps etc.
+	CallMovementUpdateDelegate(DeltaSeconds, OldLocation, OldVelocity);
+
+	SaveBaseLocation();
+	UpdateComponentVelocity();
+
+	const bool bHasAuthority = CharacterOwner && CharacterOwner->HasAuthority();
+
+	// If we move we want to avoid a long delay before replication catches up to notice this change, especially if it's throttling our rate.
+	if (bHasAuthority && UNetDriver::IsAdaptiveNetUpdateFrequencyEnabled() && UpdatedComponent)
+	{
+		UNetDriver* NetDriver = MyWorld->GetNetDriver();
+		if (NetDriver && NetDriver->IsServer())
+		{
+			FNetworkObjectInfo* NetActor = NetDriver->FindOrAddNetworkObjectInfo(CharacterOwner);
+
+			if (NetActor && MyWorld->GetTimeSeconds() <= NetActor->NextUpdateTime && NetDriver->IsNetworkActorUpdateFrequencyThrottled(*NetActor))
+			{
+				if (ShouldCancelAdaptiveReplication())
+				{
+					NetDriver->CancelAdaptiveReplication(*NetActor);
+				}
+			}
+		}
+	}
+
+	const FVector NewLocation = UpdatedComponent ? UpdatedComponent->GetComponentLocation() : FVector::ZeroVector;
+	const FQuat NewRotation = UpdatedComponent ? UpdatedComponent->GetComponentQuat() : FQuat::Identity;
+
+	if (bHasAuthority && UpdatedComponent && !IsNetMode(NM_Client))
+	{
+		const bool bLocationChanged = (NewLocation != LastUpdateLocation);
+		const bool bRotationChanged = (NewRotation != LastUpdateRotation);
+		if (bLocationChanged || bRotationChanged)
+		{
+			// Update ServerLastTransformUpdateTimeStamp. This is used by Linear smoothing on clients to interpolate positions with the correct delta time,
+			// so the timestamp should be based on the client's move delta (ServerAccumulatedClientTimeStamp), not the server time when receiving the RPC.
+			const bool bIsRemotePlayer = (CharacterOwner->GetRemoteRole() == ROLE_AutonomousProxy);
+			const FNetworkPredictionData_Server_Character* ServerData = bIsRemotePlayer ? GetPredictionData_Server_Character() : nullptr;
+			static const auto CVarNetUseClientTimestampForReplicatedTransform = IConsoleManager::Get().FindConsoleVariable(TEXT("p.NetUseClientTimestampForReplicatedTransform"));
+			if (bIsRemotePlayer && ServerData && CVarNetUseClientTimestampForReplicatedTransform->GetBool())
+			{
+				ServerLastTransformUpdateTimeStamp = float(ServerData->ServerAccumulatedClientTimeStamp);
+			}
+			else
+			{
+				ServerLastTransformUpdateTimeStamp = MyWorld->GetTimeSeconds();
+			}
+		}
+	}
+
+	LastUpdateLocation = NewLocation;
+	LastUpdateRotation = NewRotation;
+	LastUpdateVelocity = Velocity;
+}
+
+void UVRBaseCharacterMovementComponent::StartNewPhysics(float deltaTime, int32 Iterations)
+{
+	if ((deltaTime < MIN_TICK_TIME) || (Iterations >= MaxSimulationIterations) || !HasValidData())
+	{
+		return;
+	}
+
+	if (UpdatedComponent->IsSimulatingPhysics() && (MovementMode != EMovementMode::MOVE_Custom || CustomMovementMode != (uint8)EVRCustomMovementMode::VRMOVE_Physics))
+	{
+		UE_LOG(LogVRBaseCharacterMovement, Log, TEXT("UCharacterMovementComponent::StartNewPhysics: UpdateComponent (%s) is simulating physics - aborting."), *UpdatedComponent->GetPathName());
+		return;
+	}
+
+	const bool bSavedMovementInProgress = bMovementInProgress;
+	bMovementInProgress = true;
+
+	switch (MovementMode)
+	{
+	case MOVE_None:
+		break;
+	case MOVE_Walking:
+		PhysWalking(deltaTime, Iterations);
+		break;
+	case MOVE_NavWalking:
+		PhysNavWalking(deltaTime, Iterations);
+		break;
+	case MOVE_Falling:
+		PhysFalling(deltaTime, Iterations);
+		break;
+	case MOVE_Flying:
+		PhysFlying(deltaTime, Iterations);
+		break;
+	case MOVE_Swimming:
+		PhysSwimming(deltaTime, Iterations);
+		break;
+	case MOVE_Custom:
+		PhysCustom(deltaTime, Iterations);
+		break;
+	default:
+		UE_LOG(LogVRBaseCharacterMovement, Warning, TEXT("%s has unsupported movement mode %d"), *CharacterOwner->GetName(), int32(MovementMode));
+		SetMovementMode(MOVE_None);
+		break;
+	}
+
+	bMovementInProgress = bSavedMovementInProgress;
+	if (bDeferUpdateMoveComponent)
+	{
+		SetUpdatedComponent(DeferredUpdatedMoveComponent);
 	}
 }
 
