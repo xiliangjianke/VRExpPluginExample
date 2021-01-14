@@ -1292,6 +1292,7 @@ void UVRBaseCharacterMovementComponent::PhysCustom_Physics(float deltaTime, int3
 		Velocity = OrigVelocity;
 	}
 
+
 	// Skip calling into BP if we aren't locally controlled
 	/*if (CharacterOwner->IsLocallyControlled())
 	{
@@ -1303,9 +1304,23 @@ void UVRBaseCharacterMovementComponent::PhysCustom_Physics(float deltaTime, int3
 	}*/
 
 	float Friction = 0.0f;
+
+	if (UCapsuleComponent* CapComp = Cast<UCapsuleComponent>(UpdatedPrimitive))
+	{
+		FHitResult OutHit;
+		UpdatedPrimitive->SweepComponent(OutHit, UpdatedPrimitive->GetComponentLocation(), UpdatedPrimitive->GetComponentLocation() + FVector(0.f, 0.f, -(CapComp->GetScaledCapsuleHalfHeight() + 10.f)), UpdatedPrimitive->GetComponentQuat(), UpdatedPrimitive->GetCollisionShape());
+	
+		if (!OutHit.bBlockingHit || (OutHit.Distance - CapComp->GetScaledCapsuleHalfHeight()) > 3.0f)
+		{
+			Friction = 1.0f - this->AirControl;
+		}
+	}
+
+
 	CalcVelocity(deltaTime, Friction, false, 0.0f);
 
 	Velocity.Z = OrigVelocity.Z;
+
 	// Rewind the players position by the new capsule location
 	//RewindVRRelativeMovement();
 
