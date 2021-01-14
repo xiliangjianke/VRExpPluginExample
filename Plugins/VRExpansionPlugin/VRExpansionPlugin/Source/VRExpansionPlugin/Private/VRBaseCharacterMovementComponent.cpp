@@ -1285,9 +1285,11 @@ void UVRBaseCharacterMovementComponent::PhysCustom_Physics(float deltaTime, int3
 		return;
 	}
 
+	FVector OrigVelocity = Velocity;
 	if (UpdatedPrimitive)
 	{
-		Velocity = UpdatedPrimitive->GetPhysicsLinearVelocity();
+		OrigVelocity = UpdatedPrimitive->GetPhysicsLinearVelocity();
+		Velocity = OrigVelocity;
 	}
 
 	// Skip calling into BP if we aren't locally controlled
@@ -1303,6 +1305,7 @@ void UVRBaseCharacterMovementComponent::PhysCustom_Physics(float deltaTime, int3
 	float Friction = 0.0f;
 	CalcVelocity(deltaTime, Friction, false, 0.0f);
 
+	Velocity.Z = OrigVelocity.Z;
 	// Rewind the players position by the new capsule location
 	//RewindVRRelativeMovement();
 
