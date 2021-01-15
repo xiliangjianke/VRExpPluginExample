@@ -14,6 +14,7 @@
 #include "Engine/DemoNetDriver.h"
 #include "Engine/NetworkObjectList.h"
 #include "VRPlayerController.h"
+#include "DrawDebugHelpers.h"
 #include "GameFramework/PhysicsVolume.h"
 
 DEFINE_LOG_CATEGORY(LogVRBaseCharacterMovement);
@@ -1305,17 +1306,37 @@ void UVRBaseCharacterMovementComponent::PhysCustom_Physics(float deltaTime, int3
 
 	float Friction = 0.0f;
 
-	if (UCapsuleComponent* CapComp = Cast<UCapsuleComponent>(UpdatedPrimitive))
+
+	// Shrink to a short capsule, sweep down to base to find where that would hit something, and then try to stand up from there.
+	float PawnRadius, PawnHalfHeight;
+	CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleSize(PawnRadius, PawnHalfHeight);
+	//const float ShrinkHalfHeight = PawnHalfHeight - PawnRadius;
+	const float TraceDist = PawnHalfHeight + KINDA_SMALL_NUMBER * 10.f;// -ShrinkHalfHeight;
+	FCollisionQueryParams CapsuleParams(SCENE_QUERY_STAT(CrouchTrace), false, CharacterOwner);
+	FCollisionResponseParams ResponseParam;
+	InitCollisionParams(CapsuleParams, ResponseParam);
+	const FVector Down = FVector(0.f, 0.f, -TraceDist);
+	const FVector PawnLocation = UpdatedComponent->GetComponentLocation();
+
+	FHitResult Hit(1.f);
+	const FCollisionShape ShortCapsuleShape = GetPawnCapsuleCollisionShape(SHRINK_None);//(SHRINK_HeightCustom, ShrinkHalfHeight);
+	const ECollisionChannel CollisionChannel = UpdatedComponent->GetCollisionObjectType();
+	const bool bBlockingHit = GetWorld()->SweepSingleByChannel(Hit, PawnLocation, PawnLocation + Down, FQuat::Identity, CollisionChannel, ShortCapsuleShape, CapsuleParams);
+	bool bEncroached = false;
+
+	GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Orange, FString::Printf(TEXT("Hit Distance: %f"), Hit.Distance));
+
+	if (Hit.bStartPenetrating)
 	{
-		FHitResult OutHit;
-		UpdatedPrimitive->SweepComponent(OutHit, UpdatedPrimitive->GetComponentLocation(), UpdatedPrimitive->GetComponentLocation() + FVector(0.f, 0.f, -(CapComp->GetScaledCapsuleHalfHeight() + 10.f)), UpdatedPrimitive->GetComponentQuat(), UpdatedPrimitive->GetCollisionShape());
-	
-		if (!OutHit.bBlockingHit || (OutHit.Distance - CapComp->GetScaledCapsuleHalfHeight()) > 3.0f)
+ 		bEncroached = true;
+	}
+	else
+	{
+		if (!bBlockingHit || Hit.Distance > KINDA_SMALL_NUMBER * 10.f)
 		{
-			Friction = 1.0f - this->AirControl;
+			Acceleration = FVector::ZeroVector;// *= this->AirControl;
 		}
 	}
-
 
 	CalcVelocity(deltaTime, Friction, false, 0.0f);
 
