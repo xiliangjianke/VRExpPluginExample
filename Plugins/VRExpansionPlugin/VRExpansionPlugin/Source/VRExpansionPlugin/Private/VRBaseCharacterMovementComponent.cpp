@@ -1319,7 +1319,7 @@ void UVRBaseCharacterMovementComponent::PhysCustom_Physics(float deltaTime, int3
 	const FVector PawnLocation = UpdatedComponent->GetComponentLocation();
 
 	FHitResult Hit(1.f);
-	const FCollisionShape ShortCapsuleShape = GetPawnCapsuleCollisionShape(SHRINK_None);//(SHRINK_HeightCustom, ShrinkHalfHeight);
+	const FCollisionShape ShortCapsuleShape = GetPawnCapsuleCollisionShape(SHRINK_RadiusCustom, KINDA_SMALL_NUMBER * 10.f);//(SHRINK_HeightCustom, ShrinkHalfHeight);
 	const ECollisionChannel CollisionChannel = UpdatedComponent->GetCollisionObjectType();
 	const bool bBlockingHit = GetWorld()->SweepSingleByChannel(Hit, PawnLocation, PawnLocation + Down, FQuat::Identity, CollisionChannel, ShortCapsuleShape, CapsuleParams);
 	bool bEncroached = false;
