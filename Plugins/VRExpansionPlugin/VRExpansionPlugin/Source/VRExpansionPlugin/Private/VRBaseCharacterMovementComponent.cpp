@@ -1311,7 +1311,7 @@ void UVRBaseCharacterMovementComponent::PhysCustom_Physics(float deltaTime, int3
 	float PawnRadius, PawnHalfHeight;
 	CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleSize(PawnRadius, PawnHalfHeight);
 	//const float ShrinkHalfHeight = PawnHalfHeight - PawnRadius;
-	const float TraceDist = PawnHalfHeight + KINDA_SMALL_NUMBER * 10.f;// -ShrinkHalfHeight;
+	const float TraceDist = /*PawnHalfHeight + */KINDA_SMALL_NUMBER * 10.f;// -ShrinkHalfHeight;
 	FCollisionQueryParams CapsuleParams(SCENE_QUERY_STAT(CrouchTrace), false, CharacterOwner);
 	FCollisionResponseParams ResponseParam;
 	InitCollisionParams(CapsuleParams, ResponseParam);
@@ -1319,26 +1319,40 @@ void UVRBaseCharacterMovementComponent::PhysCustom_Physics(float deltaTime, int3
 	const FVector PawnLocation = UpdatedComponent->GetComponentLocation();
 
 	FHitResult Hit(1.f);
-	const FCollisionShape ShortCapsuleShape = GetPawnCapsuleCollisionShape(SHRINK_RadiusCustom, KINDA_SMALL_NUMBER * 10.f);//(SHRINK_HeightCustom, ShrinkHalfHeight);
+	const FCollisionShape ShortCapsuleShape = GetPawnCapsuleCollisionShape(SHRINK_RadiusCustom, 1.f);//(SHRINK_HeightCustom, ShrinkHalfHeight);
 	const ECollisionChannel CollisionChannel = UpdatedComponent->GetCollisionObjectType();
 	const bool bBlockingHit = GetWorld()->SweepSingleByChannel(Hit, PawnLocation, PawnLocation + Down, FQuat::Identity, CollisionChannel, ShortCapsuleShape, CapsuleParams);
 	bool bEncroached = false;
 
-	GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Orange, FString::Printf(TEXT("Hit Distance: %f"), Hit.Distance));
-
-	if (Hit.bStartPenetrating)
+	//if (Hit.bStartPenetrating)
+	//{
+ 	//	bEncroached = true;
+	//}
+	//else
+	if (Hit.bStartPenetrating || !bBlockingHit || Hit.Distance > KINDA_SMALL_NUMBER * 5.0f)
 	{
- 		bEncroached = true;
+		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Orange, FString::Printf(TEXT("Hit Distance: %f"), Hit.Distance));
+
+		FVector FallAcceleration = GetFallingLateralAcceleration(deltaTime);
+		FallAcceleration.Z = 0.f;
+		const bool bHasLimitedAirControl = ShouldLimitAirControl(deltaTime, FallAcceleration);
+
+		// Compute Velocity
+		{
+			// Acceleration = FallAcceleration for CalcVelocity(), but we restore it after using it.
+			TGuardValue<FVector> RestoreAcceleration(Acceleration, FallAcceleration);
+			Velocity.Z = 0.f;
+			CalcVelocity(deltaTime, FallingLateralFriction, false, BrakingDecelerationFalling);
+			//Velocity.Z = OldVelocity.Z;
+		}
+
+
+		//Acceleration *= this->AirControl;
 	}
 	else
 	{
-		if (!bBlockingHit || Hit.Distance > KINDA_SMALL_NUMBER * 10.f)
-		{
-			Acceleration = FVector::ZeroVector;// *= this->AirControl;
-		}
+		CalcVelocity(deltaTime, Friction, false, 0.0f);
 	}
-
-	CalcVelocity(deltaTime, Friction, false, 0.0f);
 
 	Velocity.Z = OrigVelocity.Z;
 
