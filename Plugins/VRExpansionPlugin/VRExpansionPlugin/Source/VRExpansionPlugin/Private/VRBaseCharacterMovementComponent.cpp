@@ -1293,7 +1293,6 @@ void UVRBaseCharacterMovementComponent::PhysCustom_Physics(float deltaTime, int3
 		Velocity = OrigVelocity;
 	}
 
-
 	// Skip calling into BP if we aren't locally controlled
 	/*if (CharacterOwner->IsLocallyControlled())
 	{
@@ -1311,7 +1310,7 @@ void UVRBaseCharacterMovementComponent::PhysCustom_Physics(float deltaTime, int3
 	float PawnRadius, PawnHalfHeight;
 	CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleSize(PawnRadius, PawnHalfHeight);
 	//const float ShrinkHalfHeight = PawnHalfHeight - PawnRadius;
-	const float TraceDist = /*PawnHalfHeight + */KINDA_SMALL_NUMBER * 10.f;// -ShrinkHalfHeight;
+	const float TraceDist = KINDA_SMALL_NUMBER * 10.f;// -ShrinkHalfHeight;
 	FCollisionQueryParams CapsuleParams(SCENE_QUERY_STAT(CrouchTrace), false, CharacterOwner);
 	FCollisionResponseParams ResponseParam;
 	InitCollisionParams(CapsuleParams, ResponseParam);
@@ -1329,7 +1328,7 @@ void UVRBaseCharacterMovementComponent::PhysCustom_Physics(float deltaTime, int3
  	//	bEncroached = true;
 	//}
 	//else
-	if (Hit.bStartPenetrating || !bBlockingHit || Hit.Distance > KINDA_SMALL_NUMBER * 5.0f)
+	if (/*Hit.bStartPenetrating || */!bBlockingHit || Hit.Distance > KINDA_SMALL_NUMBER * 5.0f)
 	{
 		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Orange, FString::Printf(TEXT("Hit Distance: %f"), Hit.Distance));
 
@@ -1341,9 +1340,9 @@ void UVRBaseCharacterMovementComponent::PhysCustom_Physics(float deltaTime, int3
 		{
 			// Acceleration = FallAcceleration for CalcVelocity(), but we restore it after using it.
 			TGuardValue<FVector> RestoreAcceleration(Acceleration, FallAcceleration);
-			Velocity.Z = 0.f;
+			//Velocity.Z = 0.f;
 			CalcVelocity(deltaTime, FallingLateralFriction, false, BrakingDecelerationFalling);
-			//Velocity.Z = OldVelocity.Z;
+			Velocity.Z = OldVelocity.Z;
 		}
 
 
@@ -1352,9 +1351,12 @@ void UVRBaseCharacterMovementComponent::PhysCustom_Physics(float deltaTime, int3
 	else
 	{
 		CalcVelocity(deltaTime, Friction, false, 0.0f);
+		Velocity.Z = OrigVelocity.Z;
 	}
 
-	Velocity.Z = OrigVelocity.Z;
+	//CalcVelocity(deltaTime, Friction, false, 0.0f);
+
+	//Velocity.Z = OrigVelocity.Z;
 
 	// Rewind the players position by the new capsule location
 	//RewindVRRelativeMovement();
