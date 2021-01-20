@@ -1285,6 +1285,7 @@ void UVRBaseCharacterMovementComponent::PhysCustom_Physics(float deltaTime, int3
 	{
 		return;
 	}
+	return;
 
 	FVector OrigVelocity = Velocity;
 	if (UpdatedPrimitive)
@@ -1342,7 +1343,7 @@ void UVRBaseCharacterMovementComponent::PhysCustom_Physics(float deltaTime, int3
 			TGuardValue<FVector> RestoreAcceleration(Acceleration, FallAcceleration);
 			//Velocity.Z = 0.f;
 			CalcVelocity(deltaTime, FallingLateralFriction, false, BrakingDecelerationFalling);
-			Velocity.Z = OldVelocity.Z;
+//			Velocity.Z = OldVelocity.Z;
 		}
 
 
@@ -1351,12 +1352,12 @@ void UVRBaseCharacterMovementComponent::PhysCustom_Physics(float deltaTime, int3
 	else
 	{
 		CalcVelocity(deltaTime, Friction, false, 0.0f);
-		Velocity.Z = OrigVelocity.Z;
+		//Velocity.Z = OrigVelocity.Z;
 	}
 
 	//CalcVelocity(deltaTime, Friction, false, 0.0f);
 
-	//Velocity.Z = OrigVelocity.Z;
+	Velocity.Z = OrigVelocity.Z;
 
 	// Rewind the players position by the new capsule location
 	//RewindVRRelativeMovement();
