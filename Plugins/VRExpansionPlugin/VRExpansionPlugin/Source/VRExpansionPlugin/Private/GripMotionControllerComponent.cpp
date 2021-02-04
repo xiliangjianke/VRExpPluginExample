@@ -100,9 +100,23 @@ UGripMotionControllerComponent::UGripMotionControllerComponent(const FObjectInit
 	bSmoothReplicatedMotion = false;
 	bReppedOnce = false;
 	bOffsetByHMD = false;
+
+	bSmoothHandTracking = false;
+	bWasSmoothingHand = false;
+	bSmoothWithEuroLowPassFunction = false;
+	LastSmoothRelativeTransform = FTransform::Identity;
+	SmoothingSpeed = 20.0f;
+	EuroSmoothingParams.MinCutoff = 0.1f;
+	EuroSmoothingParams.DeltaCutoff = 10.f;
+	EuroSmoothingParams.CutoffSlope = 10.f;
+
 	bIsPostTeleport = false;
 
 	GripIDIncrementer = INVALID_VRGRIP_ID;
+
+	// Pivot Variables
+	CustomPivotComponentSocketName = NAME_None;
+	bSkipPivotTransformAdjustment = false;
 
 	bOffsetByControllerProfile = true;
 	GripRenderThreadProfileTransform = FTransform::Identity;
@@ -1438,7 +1452,7 @@ bool UGripMotionControllerComponent::GripActor(
 	}
 	else if (bWorldOffsetIsRelative)
 	{
-		if (CustomPivotComponent.IsValid() && !bIsSlotGrip)
+		if (bSkipPivotTransformAdjustment && CustomPivotComponent.IsValid() && !bIsSlotGrip)
 		{
 			newActorGrip.RelativeTransform = (WorldOffset * this->GetComponentTransform()).GetRelativeTransform(CustomPivotComponent->GetComponentTransform());
 		}
@@ -1686,7 +1700,7 @@ bool UGripMotionControllerComponent::GripComponent(
 	}
 	else if (bWorldOffsetIsRelative)
 	{
-		if (CustomPivotComponent.IsValid() && !bIsSlotGrip)
+		if (bSkipPivotTransformAdjustment && CustomPivotComponent.IsValid() && !bIsSlotGrip)
 		{
 			newComponentGrip.RelativeTransform = (WorldOffset * this->GetComponentTransform()).GetRelativeTransform(CustomPivotComponent->GetComponentTransform());
 		}
@@ -3201,30 +3215,55 @@ bool UGripMotionControllerComponent::AddSecondaryAttachmentPoint(UObject * Gripp
 	return false;
 }
 
-bool UGripMotionControllerComponent::AddSecondaryAttachmentToGrip(const FBPActorGripInformation & GripToAddAttachment, USceneComponent * SecondaryPointComponent, const FTransform &OriginalTransform, bool bTransformIsAlreadyRelative, float LerpToTime, bool bIsSlotGrip, FName SecondarySlotName)
+bool UGripMotionControllerComponent::AddSecondaryAttachmentToGripByID(const uint8 GripID, USceneComponent* SecondaryPointComponent, const FTransform& OriginalTransform, bool bTransformIsAlreadyRelative, float LerpToTime, bool bIsSlotGrip, FName SecondarySlotName)
 {
-	if (!GripToAddAttachment.GrippedObject || GripToAddAttachment.GripID == INVALID_VRGRIP_ID || !SecondaryPointComponent || (!GrippedObjects.Num() && !LocallyGrippedObjects.Num()))
-		return false;
-
-	FBPActorGripInformation * GripToUse = nullptr;
-
-	GripToUse = LocallyGrippedObjects.FindByKey(GripToAddAttachment.GripID);
-
-	// Search replicated grips if not found in local
-	if (!GripToUse)
+	FBPActorGripInformation* GripToUse = nullptr;
+	if (GripID != INVALID_VRGRIP_ID)
 	{
-		// Replicated grips need to be called from server side
-		if (!IsServer())
+		GripToUse = GrippedObjects.FindByKey(GripID);
+		if (!GripToUse)
 		{
-			UE_LOG(LogVRMotionController, Warning, TEXT("VRGripMotionController add secondary attachment function was called on the client side with a replicated grip"));
-			return false;
+			GripToUse = LocallyGrippedObjects.FindByKey(GripID);
 		}
 
-		GripToUse = GrippedObjects.FindByKey(GripToAddAttachment.GripID);
+		if (GripToUse)
+		{
+			return AddSecondaryAttachmentToGrip(*GripToUse, SecondaryPointComponent, OriginalTransform, bTransformIsAlreadyRelative, LerpToTime, bIsSlotGrip, SecondarySlotName);
+		}
 	}
 
-	if (!GripToUse || !GripToUse->GrippedObject)
+	return false;
+}
+
+bool UGripMotionControllerComponent::AddSecondaryAttachmentToGrip(const FBPActorGripInformation & GripToAddAttachment, USceneComponent * SecondaryPointComponent, const FTransform &OriginalTransform, bool bTransformIsAlreadyRelative, float LerpToTime, bool bIsSlotGrip, FName SecondarySlotName)
+{
+	if (!SecondaryPointComponent)
+	{
+		UE_LOG(LogVRMotionController, Warning, TEXT("VRGripMotionController add secondary attachment function was called with a bad secondary component target!"));
 		return false;
+	}
+
+	FBPActorGripInformation* GripToUse = nullptr;
+	bool bWasLocal = false;
+	if (GripToAddAttachment.GrippedObject && GripToAddAttachment.GripID != INVALID_VRGRIP_ID)
+	{
+		GripToUse = GrippedObjects.FindByKey(GripToAddAttachment.GripID);
+		if (!GripToUse)
+		{
+			GripToUse = LocallyGrippedObjects.FindByKey(GripToAddAttachment.GripID);
+			bWasLocal = true;
+		}
+	}
+
+	if (!GripToUse || !GripToUse->GrippedObject || GripToUse->GripID == INVALID_VRGRIP_ID)
+		return false;
+
+	// Replicated grips need to be called from server side
+	if (bWasLocal && !IsServer())
+	{
+		UE_LOG(LogVRMotionController, Warning, TEXT("VRGripMotionController add secondary attachment function was called on the client side with a replicated grip"));
+		return false;
+	}
 
 	bool bGrippedObjectIsInterfaced = GripToUse->GrippedObject->GetClass()->ImplementsInterface(UVRGripInterface::StaticClass());
 
@@ -3350,31 +3389,48 @@ bool UGripMotionControllerComponent::RemoveSecondaryAttachmentPoint(UObject * Gr
 
 	return false;
 }
+bool UGripMotionControllerComponent::RemoveSecondaryAttachmentFromGripByID(const uint8 GripID, float LerpToTime)
+{
+	FBPActorGripInformation* GripToUse = nullptr;
+	if (GripID != INVALID_VRGRIP_ID)
+	{
+		GripToUse = GrippedObjects.FindByKey(GripID);
+		if (!GripToUse)
+		{
+			GripToUse = LocallyGrippedObjects.FindByKey(GripID);
+		}
+
+		if (GripToUse)
+		{
+			return RemoveSecondaryAttachmentFromGrip(*GripToUse, LerpToTime);
+		}
+	}
+
+	return false;
+}
 
 bool UGripMotionControllerComponent::RemoveSecondaryAttachmentFromGrip(const FBPActorGripInformation & GripToRemoveAttachment, float LerpToTime)
 {
-	if (!GripToRemoveAttachment.GrippedObject || GripToRemoveAttachment.GripID == INVALID_VRGRIP_ID || (!GrippedObjects.Num() && !LocallyGrippedObjects.Num()))
-		return false;
-
-	FBPActorGripInformation * GripToUse = nullptr;
-
-	// Duplicating the logic for each array for now
-	GripToUse = LocallyGrippedObjects.FindByKey(GripToRemoveAttachment.GripID);
-
-	// Check replicated grips if it wasn't found in local
-	if (!GripToUse)
+	FBPActorGripInformation* GripToUse = nullptr;
+	bool bWasLocal = false;
+	if (GripToRemoveAttachment.GrippedObject && GripToRemoveAttachment.GripID != INVALID_VRGRIP_ID)
 	{
-		if (!IsServer())
-		{
-			UE_LOG(LogVRMotionController, Warning, TEXT("VRGripMotionController remove secondary attachment function was called on the client side for a replicating grip"));
-			return false;
-		}
-
 		GripToUse = GrippedObjects.FindByKey(GripToRemoveAttachment.GripID);
+		if (!GripToUse)
+		{
+			GripToUse = LocallyGrippedObjects.FindByKey(GripToRemoveAttachment.GripID);
+			bWasLocal = true;
+		}
+	}
+
+	if (GripToUse && bWasLocal && !IsServer())
+	{
+		UE_LOG(LogVRMotionController, Warning, TEXT("VRGripMotionController remove secondary attachment function was called on the client side for a replicating grip"));
+		return false;
 	}
 
 	// Handle the grip if it was found
-	if (GripToUse && GripToUse->GrippedObject)
+	if (GripToUse && GripToUse->GrippedObject && GripToUse->GripID != INVALID_VRGRIP_ID)
 	{
 		if (GripToUse->SecondaryGripInfo.GripLerpState == EGripLerpState::StartLerp)
 			LerpToTime = 0.0f;
@@ -3835,7 +3891,44 @@ void UGripMotionControllerComponent::UpdateTracking(float DeltaTime)
 			bTracked = bNewTrackedState && CurrentTrackingStatus != ETrackingStatus::NotTracked;
 			if (bTracked)
 			{
-				SetRelativeTransform(FTransform(Orientation, Position, this->GetRelativeScale3D()));
+				if (bSmoothHandTracking)
+				{
+					FTransform CalcedTransform = FTransform(Orientation, Position, this->GetRelativeScale3D());
+					
+					if (bSmoothWithEuroLowPassFunction)
+					{
+						SetRelativeTransform(EuroSmoothingParams.RunFilterSmoothing(CalcedTransform, DeltaTime));
+					}
+					else
+					{
+						if (SmoothingSpeed <= 0.f || LastSmoothRelativeTransform.Equals(FTransform::Identity))
+						{
+							SetRelativeTransform(CalcedTransform);
+							LastSmoothRelativeTransform = CalcedTransform;
+						}
+						else
+						{
+							const float Alpha = FMath::Clamp(DeltaTime * SmoothingSpeed, 0.f, 1.f);
+							LastSmoothRelativeTransform.Blend(LastSmoothRelativeTransform, CalcedTransform, Alpha);
+							SetRelativeTransform(LastSmoothRelativeTransform);
+						}
+					}
+
+					bWasSmoothingHand = true;
+				}
+				else
+				{
+					if (bWasSmoothingHand)
+					{
+						// Clear the smoothing information so that we start with a fresh log when its enabled again
+						LastSmoothRelativeTransform = FTransform::Identity;
+						EuroSmoothingParams.ResetSmoothingFilter();
+
+						bWasSmoothingHand = false;
+					}
+
+					SetRelativeTransform(FTransform(Orientation, Position, this->GetRelativeScale3D()));
+				}
 			}
 
 			// if controller tracking just changed
@@ -4044,12 +4137,18 @@ void UGripMotionControllerComponent::TickGrip(float DeltaTime)
 	if(!IsServer())
 		CheckTransactionBuffer();
 
+	bool bOriginalPostTeleport = bIsPostTeleport;
+
 	// Split into separate functions so that I didn't have to combine arrays since I have some removal going on
 	HandleGripArray(GrippedObjects, ParentTransform, DeltaTime, true);
 	HandleGripArray(LocallyGrippedObjects, ParentTransform, DeltaTime);
 
-	// Empty out the teleport flag
-	bIsPostTeleport = false;
+	// Empty out the teleport flag, checking original state just in case the player changed it while processing bps
+	if (bOriginalPostTeleport && (GrippedObjects.Num() || LocallyGrippedObjects.Num()))
+	{
+		OnTeleportedGrips.Broadcast();
+		bIsPostTeleport = false;
+	}
 
 	// Save out the component velocity from this and last frame
 
@@ -6454,9 +6553,10 @@ void UGripMotionControllerComponent::GetHandType(EControllerHand& Hand)
 	}
 }
 
-void UGripMotionControllerComponent::SetCustomPivotComponent(USceneComponent * NewCustomPivotComponent)
+void UGripMotionControllerComponent::SetCustomPivotComponent(USceneComponent * NewCustomPivotComponent, FName PivotSocketName)
 {
 	CustomPivotComponent = NewCustomPivotComponent;
+	CustomPivotComponentSocketName = PivotSocketName;
 }
 
 FTransform UGripMotionControllerComponent::GetPivotTransform_BP()
@@ -6471,7 +6571,7 @@ FVector UGripMotionControllerComponent::GetPivotLocation_BP()
 
 FTransform UGripMotionControllerComponent::ConvertToControllerRelativeTransform(const FTransform & InTransform)
 {
-	return InTransform.GetRelativeTransform(this->GetComponentTransform());
+	return InTransform.GetRelativeTransform(!bSkipPivotTransformAdjustment && CustomPivotComponent.IsValid() ? CustomPivotComponent->GetSocketTransform(CustomPivotComponentSocketName) : this->GetComponentTransform());
 }
 
 FTransform UGripMotionControllerComponent::ConvertToGripRelativeTransform(const FTransform& GrippedActorTransform, const FTransform & InTransform)

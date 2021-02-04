@@ -568,16 +568,22 @@ void UVRBaseCharacterMovementComponent::PerformMoveAction_SnapTurn(float DeltaYa
 {
 	FVRMoveActionContainer MoveAction;
 	MoveAction.MoveAction = EVRMoveAction::VRMOVEACTION_SnapTurn; 
-	MoveAction.MoveActionRot = FRotator(0.0f, FMath::RoundToFloat(((FRotator(0.f,DeltaYawAngle, 0.f).Quaternion() * UpdatedComponent->GetComponentQuat()).Rotator().Yaw) * 100.f) / 100.f, 0.0f);
 	
+	// Removed 2 decimal precision rounding in favor of matching the actual replicated short fidelity instead.
+	// MoveAction.MoveActionRot = FRotator(0.0f, FMath::RoundToFloat(((FRotator(0.f,DeltaYawAngle, 0.f).Quaternion() * UpdatedComponent->GetComponentQuat()).Rotator().Yaw) * 100.f) / 100.f, 0.0f);
+	
+	// Setting to the exact same fidelity as the replicated value ends up being, losing some precision
+	MoveAction.MoveActionRot = FRotator(0.0f, FRotator::DecompressAxisFromShort(FRotator::CompressAxisToShort((FRotator(0.f, DeltaYawAngle, 0.f).Quaternion() * UpdatedComponent->GetComponentQuat()).Rotator().Yaw)), 0.0f);
+
 	if (bFlagCharacterTeleport)
-		MoveAction.MoveActionRot.Roll = 2.0f;
+		MoveAction.MoveActionFlags = 0x02;// .MoveActionRot.Roll = 2.0f;
 	else
-		MoveAction.MoveActionRot.Roll = bFlagGripTeleport ? 1.0f : 0.0f;
+		MoveAction.MoveActionFlags = 0x01;//MoveActionRot.Roll = bFlagGripTeleport ? 1.0f : 0.0f;
 
 	if (VelocityRetention == EVRMoveActionVelocityRetention::VRMOVEACTION_Velocity_Turn)
 	{
-		MoveAction.MoveActionRot.Pitch = FMath::RoundToFloat(DeltaYawAngle * 100.f) / 100.f;
+		//MoveAction.MoveActionRot.Pitch = FMath::RoundToFloat(DeltaYawAngle * 100.f) / 100.f;
+		MoveAction.MoveActionRot.Pitch = DeltaYawAngle;
 	}
 
 	MoveAction.VelRetentionSetting = VelocityRetention;
@@ -593,14 +599,15 @@ void UVRBaseCharacterMovementComponent::PerformMoveAction_SetRotation(float NewY
 	MoveAction.MoveActionRot = FRotator(0.0f, FMath::RoundToFloat(NewYaw * 100.f) / 100.f, 0.0f);
 
 	if (bFlagCharacterTeleport)
-		MoveAction.MoveActionRot.Roll = 2.0f;
+		MoveAction.MoveActionFlags = 0x02;// .MoveActionRot.Roll = 2.0f;
 	else
-		MoveAction.MoveActionRot.Roll = bFlagGripTeleport ? 1.0f : 0.0f;
+		MoveAction.MoveActionFlags = 0x01;//MoveActionRot.Roll = bFlagGripTeleport ? 1.0f : 0.0f;
 
 	if (VelocityRetention == EVRMoveActionVelocityRetention::VRMOVEACTION_Velocity_Turn)
 	{
 		float DeltaYawAngle = FMath::FindDeltaAngleDegrees(UpdatedComponent->GetComponentRotation().Yaw, NewYaw);
-		MoveAction.MoveActionRot.Pitch = FMath::RoundToFloat(DeltaYawAngle * 100.f) / 100.f;
+		//MoveAction.MoveActionRot.Pitch = FMath::RoundToFloat(DeltaYawAngle * 100.f) / 100.f;
+		MoveAction.MoveActionRot.Pitch = DeltaYawAngle;
 	}
 
 	MoveAction.VelRetentionSetting = VelocityRetention;
@@ -615,12 +622,13 @@ void UVRBaseCharacterMovementComponent::PerformMoveAction_Teleport(FVector Telep
 	MoveAction.MoveAction = EVRMoveAction::VRMOVEACTION_Teleport;
 	MoveAction.MoveActionLoc = RoundDirectMovement(TeleportLocation);
 	MoveAction.MoveActionRot.Yaw = FMath::RoundToFloat(TeleportRotation.Yaw * 100.f) / 100.f;
-	MoveAction.MoveActionRot.Roll = bSkipEncroachmentCheck ? 1.0f : 0.0f;
+	MoveAction.MoveActionFlags |= (uint8)bSkipEncroachmentCheck;//.MoveActionRot.Roll = bSkipEncroachmentCheck ? 1.0f : 0.0f;
 
 	if (VelocityRetention == EVRMoveActionVelocityRetention::VRMOVEACTION_Velocity_Turn)
 	{
 		float DeltaYawAngle = FMath::FindDeltaAngleDegrees(UpdatedComponent->GetComponentRotation().Yaw, TeleportRotation.Yaw);
-		MoveAction.MoveActionRot.Pitch = FMath::RoundToFloat(DeltaYawAngle * 100.f) / 100.f;
+		//MoveAction.MoveActionRot.Pitch = FMath::RoundToFloat(DeltaYawAngle * 100.f) / 100.f;
+		MoveAction.MoveActionRot.Pitch = DeltaYawAngle;
 	}
 
 	MoveAction.VelRetentionSetting = VelocityRetention;
@@ -693,10 +701,34 @@ bool UVRBaseCharacterMovementComponent::DoMASnapTurn(FVRMoveActionContainer& Mov
 {
 	if (AVRBaseCharacter * OwningCharacter = Cast<AVRBaseCharacter>(GetCharacterOwner()))
 	{	
+
 		FRotator TargetRot(0.f, MoveAction.MoveActionRot.Yaw, 0.f);
 
 		FQuat OrigRot = OwningCharacter->GetActorQuat();
-		OwningCharacter->SetActorRotationVR(TargetRot, true, false);
+
+		if (this->BaseVRCharacterOwner && this->BaseVRCharacterOwner->IsLocallyControlled())
+		{
+			if (this->bUseClientControlRotation)
+			{
+				MoveAction.MoveActionLoc = OwningCharacter->SetActorRotationVR(TargetRot, true, false);
+				MoveAction.MoveActionFlags |= 0x04; // Flag that we are using loc only
+			}
+			else
+			{
+				OwningCharacter->SetActorRotationVR(TargetRot, true, false);
+			}
+		}
+		else
+		{
+			if (MoveAction.MoveActionFlags & 0x04)
+			{
+				OwningCharacter->SetActorLocation(OwningCharacter->GetActorLocation() + MoveAction.MoveActionLoc);
+			}
+			else
+			{
+				OwningCharacter->SetActorRotationVR(TargetRot, true, false);
+			}
+		}
 
 		switch (MoveAction.VelRetentionSetting)
 		{
@@ -709,15 +741,23 @@ bool UVRBaseCharacterMovementComponent::DoMASnapTurn(FVRMoveActionContainer& Mov
 			this->Velocity = FVector::ZeroVector;
 		}break;
 		case EVRMoveActionVelocityRetention::VRMOVEACTION_Velocity_Turn:
-		{		
-			this->Velocity = FRotator(0.f, MoveAction.MoveActionRot.Pitch, 0.f).RotateVector(this->Velocity);
+		{	
+			if (OwningCharacter->IsLocallyControlled())
+			{
+				MoveAction.MoveActionVel = RoundDirectMovement(FRotator(0.f, MoveAction.MoveActionRot.Pitch, 0.f).RotateVector(this->Velocity));
+				this->Velocity = MoveAction.MoveActionVel;
+			}
+			else
+			{
+				this->Velocity = MoveAction.MoveActionVel;
+			}
 		}break;
 		}
 
 		// If we are flagged to teleport the grips
-		if (MoveAction.MoveActionRot.Roll > 0.0f)
+		if (MoveAction.MoveActionFlags & 0x01 || MoveAction.MoveActionFlags & 0x02)
 		{
-			OwningCharacter->NotifyOfTeleport(MoveAction.MoveActionRot.Roll > 1.5f);
+			OwningCharacter->NotifyOfTeleport(MoveAction.MoveActionFlags & 0x02);
 		}
 	}
 
@@ -729,7 +769,29 @@ bool UVRBaseCharacterMovementComponent::DoMASetRotation(FVRMoveActionContainer& 
 	if (AVRBaseCharacter * OwningCharacter = Cast<AVRBaseCharacter>(GetCharacterOwner()))
 	{
 		FRotator TargetRot(0.f, MoveAction.MoveActionRot.Yaw, 0.f);
-		OwningCharacter->SetActorRotationVR(TargetRot, true);
+		if (this->BaseVRCharacterOwner && this->BaseVRCharacterOwner->IsLocallyControlled())
+		{
+			if (this->bUseClientControlRotation)
+			{
+				MoveAction.MoveActionLoc = OwningCharacter->SetActorRotationVR(TargetRot, true);
+				MoveAction.MoveActionFlags |= 0x04; // Flag that we are using loc only
+			}
+			else
+			{
+				OwningCharacter->SetActorRotationVR(TargetRot, true);
+			}
+		}
+		else
+		{
+			if (MoveAction.MoveActionFlags & 0x04)
+			{
+				OwningCharacter->SetActorLocation(OwningCharacter->GetActorLocation() + MoveAction.MoveActionLoc);
+			}
+			else
+			{
+				OwningCharacter->SetActorRotationVR(TargetRot, true);
+			}
+		}
 
 		switch (MoveAction.VelRetentionSetting)
 		{
@@ -743,14 +805,22 @@ bool UVRBaseCharacterMovementComponent::DoMASetRotation(FVRMoveActionContainer& 
 		}break;
 		case EVRMoveActionVelocityRetention::VRMOVEACTION_Velocity_Turn:
 		{
-			this->Velocity = FRotator(0.f, MoveAction.MoveActionRot.Pitch, 0.f).RotateVector(this->Velocity);
+			if (OwningCharacter->IsLocallyControlled())
+			{
+				MoveAction.MoveActionVel = RoundDirectMovement(FRotator(0.f, MoveAction.MoveActionRot.Pitch, 0.f).RotateVector(this->Velocity));
+				this->Velocity = MoveAction.MoveActionVel;
+			}
+			else
+			{
+				this->Velocity = MoveAction.MoveActionVel;
+			}
 		}break;
 		}
 
 		// If we are flagged to teleport the grips
-		if (MoveAction.MoveActionRot.Roll > 0.0f)
+		if (MoveAction.MoveActionFlags & 0x01 || MoveAction.MoveActionFlags & 0x02)
 		{
-			OwningCharacter->NotifyOfTeleport(MoveAction.MoveActionRot.Roll > 1.5f);
+			OwningCharacter->NotifyOfTeleport(MoveAction.MoveActionFlags & 0x02);
 		}
 	}
 
@@ -769,7 +839,7 @@ bool UVRBaseCharacterMovementComponent::DoMATeleport(FVRMoveActionContainer& Mov
 			return false;
 		}
 
-		bool bSkipEncroachmentCheck = MoveAction.MoveActionRot.Roll > 0.0f;
+		bool bSkipEncroachmentCheck = MoveAction.MoveActionFlags & 0x01; //MoveAction.MoveActionRot.Roll > 0.0f;
 		FRotator TargetRot(0.f, MoveAction.MoveActionRot.Yaw, 0.f);
 		OwningCharacter->TeleportTo(MoveAction.MoveActionLoc, TargetRot, false, bSkipEncroachmentCheck);
 
@@ -785,12 +855,20 @@ bool UVRBaseCharacterMovementComponent::DoMATeleport(FVRMoveActionContainer& Mov
 		}break;
 		case EVRMoveActionVelocityRetention::VRMOVEACTION_Velocity_Turn:
 		{
-			this->Velocity = FRotator(0.f, MoveAction.MoveActionRot.Pitch, 0.f).RotateVector(this->Velocity);
+			if (OwningCharacter->IsLocallyControlled())
+			{
+				MoveAction.MoveActionVel = RoundDirectMovement(FRotator(0.f, MoveAction.MoveActionRot.Pitch, 0.f).RotateVector(this->Velocity));
+				this->Velocity = MoveAction.MoveActionVel;
+			}
+			else
+			{
+				this->Velocity = MoveAction.MoveActionVel;
+			}
 		}break;
 		}
 
 		if (OwningCharacter->bUseControllerRotationYaw)
-			OwningController->SetControlRotation(MoveAction.MoveActionRot);
+			OwningController->SetControlRotation(TargetRot);
 
 		return true;
 	}
@@ -1007,6 +1085,10 @@ void UVRBaseCharacterMovementComponent::PhysCustom_LowGrav(float deltaTime, int3
 	}
 
 	float Friction = 0.0f; 
+	// Rewind the players position by the new capsule location
+	RewindVRRelativeMovement();
+
+	RestorePreAdditiveVRMotionVelocity();
 
 	// If we are not in the default physics volume then accept the custom fluid friction setting
 	// I set this by default to be ignored as many will not alter the default fluid friction
@@ -1015,12 +1097,11 @@ void UVRBaseCharacterMovementComponent::PhysCustom_LowGrav(float deltaTime, int3
 
 	CalcVelocity(deltaTime, Friction, true, 0.0f);
 
-	// Rewind the players position by the new capsule location
-	RewindVRRelativeMovement();
-
 	// Adding in custom VR input vector here, can be used for custom movement during it
 	// AddImpulse is not multiplayer compatible client side
-	Velocity += CustomVRInputVector; 
+	//Velocity += CustomVRInputVector; 
+
+	ApplyVRMotionToVelocity(deltaTime);
 
 	Iterations++;
 	bJustTeleported = false;
@@ -1028,7 +1109,7 @@ void UVRBaseCharacterMovementComponent::PhysCustom_LowGrav(float deltaTime, int3
 	FVector OldLocation = UpdatedComponent->GetComponentLocation();
 	const FVector Adjusted = (Velocity * deltaTime);
 	FHitResult Hit(1.f);
-	SafeMoveUpdatedComponent(Adjusted + AdditionalVRInputVector, UpdatedComponent->GetComponentQuat(), true, Hit);
+	SafeMoveUpdatedComponent(Adjusted/* + AdditionalVRInputVector*/, UpdatedComponent->GetComponentQuat(), true, Hit);
 
 	if (Hit.Time < 1.f)
 	{
@@ -1057,14 +1138,14 @@ void UVRBaseCharacterMovementComponent::PhysCustom_LowGrav(float deltaTime, int3
 
 		if (!bJustTeleported && !HasAnimRootMotion() && !CurrentRootMotion.HasOverrideVelocity())
 		{
-			Velocity = (((UpdatedComponent->GetComponentLocation() - OldLocation) - AdditionalVRInputVector) / deltaTime) * VRLowGravWallFrictionScaler;
+			Velocity = (((UpdatedComponent->GetComponentLocation() - OldLocation) /* - AdditionalVRInputVector*/) / deltaTime) * VRLowGravWallFrictionScaler;
 		}
 	}
 	else
 	{
 		if (!bJustTeleported && !HasAnimRootMotion() && !CurrentRootMotion.HasOverrideVelocity())
 		{
-			Velocity = (((UpdatedComponent->GetComponentLocation() - OldLocation) - AdditionalVRInputVector) / deltaTime);
+			Velocity = (((UpdatedComponent->GetComponentLocation() - OldLocation) /* - AdditionalVRInputVector*/) / deltaTime);
 		}
 	}
 }
