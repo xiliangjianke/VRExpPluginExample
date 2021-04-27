@@ -661,11 +661,14 @@ void AVRBaseCharacter::TickSeatInformation(float DeltaTime)
 
 bool AVRBaseCharacter::SetSeatedMode(USceneComponent * SeatParent, bool bSetSeatedMode, FTransform TargetTransform, FTransform InitialRelCameraTransform, float AllowedRadius, float AllowedRadiusThreshold, bool bZeroToHead, EVRConjoinedMovementModes PostSeatedMovementMode)
 {
-	if (!this->HasAuthority() || !SeatParent)
+	if (!this->HasAuthority())
 		return false;
 
 	if (bSetSeatedMode)
 	{
+		if (!SeatParent)
+			return false;
+
 		SeatInformation.SeatParent = SeatParent;
 		SeatInformation.bSitting = true;
 		SeatInformation.bZeroToHead = bZeroToHead;
@@ -954,4 +957,45 @@ void AVRBaseCharacter::ExtendedSimpleMoveToLocation(const FVector& GoalLocation,
 			}
 		}
 	}
+}
+
+bool AVRBaseCharacter::GetCurrentNavigationPathPoints(TArray<FVector>& NavigationPointList)
+{
+	UPathFollowingComponent* PFollowComp = nullptr;
+	if (Controller)
+	{
+		// New for 4.20, spawning the missing path following component here if there isn't already one
+		PFollowComp = Controller->FindComponentByClass<UPathFollowingComponent>();
+		if (PFollowComp)
+		{
+			FNavPathSharedPtr NavPtr = PFollowComp->GetPath();
+			if (NavPtr.IsValid())
+			{
+				TArray<FNavPathPoint>& NavPoints = NavPtr->GetPathPoints();
+				if (NavPoints.Num())
+				{
+					FTransform BaseTransform = FTransform::Identity;
+					if (AActor* BaseActor = NavPtr->GetBaseActor())
+					{
+						BaseTransform = BaseActor->GetActorTransform();
+					}				
+
+					NavigationPointList.Empty(NavPoints.Num());
+					NavigationPointList.AddUninitialized(NavPoints.Num());
+
+					int counter = 0;
+					for (FNavPathPoint& pt : NavPoints)
+					{
+						NavigationPointList[counter++] = BaseTransform.TransformPosition(pt.Location);
+					}
+
+					return true;
+				}
+			}
+
+			return false;
+		}
+	}
+
+	return false;
 }
