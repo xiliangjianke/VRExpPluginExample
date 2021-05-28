@@ -1593,7 +1593,7 @@ void UVRCharacterMovementComponent::MoveAlongFloor(const FVector& InVelocity, fl
 
 		if (Hit.IsValidBlockingHit())
 		{
-			if (CanStepUp(Hit) || (CharacterOwner->GetMovementBase() != NULL && CharacterOwner->GetMovementBase()->GetOwner() == Hit.GetActor()))
+			if (CanStepUp(Hit) || (CharacterOwner->GetMovementBase() != nullptr && Hit.HitObjectHandle == CharacterOwner->GetMovementBase()->GetOwner()))
 			{
 				// hit a barrier, try to step up
 				const FVector PreStepUpLocation = UpdatedComponent->GetComponentLocation();
@@ -3303,7 +3303,7 @@ bool UVRCharacterMovementComponent::CheckWaterJump(FVector CheckPoint, FVector& 
 	const ECollisionChannel CollisionChannel = UpdatedComponent->GetCollisionObjectType();
 	bool bHit = GetWorld()->SweepSingleByChannel(HitInfo, currentLoc, CheckPoint, FQuat::Identity, CollisionChannel, CapsuleShape, CapsuleParams, ResponseParam);
 
-	if (bHit && !Cast<APawn>(HitInfo.GetActor()))
+	if (bHit && !HitInfo.HitObjectHandle.DoesRepresentClass(APawn::StaticClass()))
 	{
 		// hit a wall - check if it is low enough
 		WallNormal = -1.f * HitInfo.ImpactNormal;
@@ -4043,8 +4043,7 @@ FVector UVRCharacterMovementComponent::GetPenetrationAdjustment(const FHitResult
 	{
 		const bool bIsProxy = (CharacterOwner->GetLocalRole() == ROLE_SimulatedProxy);
 		float MaxDistance = bIsProxy ? MaxDepenetrationWithGeometryAsProxy : MaxDepenetrationWithGeometry;
-		const AActor* HitActor = Hit.GetActor();
-		if (Cast<APawn>(HitActor))
+		if (Hit.HitObjectHandle.DoesRepresentClass(APawn::StaticClass()))
 		{
 			MaxDistance = bIsProxy ? MaxDepenetrationWithPawnAsProxy : MaxDepenetrationWithPawn;
 		}
