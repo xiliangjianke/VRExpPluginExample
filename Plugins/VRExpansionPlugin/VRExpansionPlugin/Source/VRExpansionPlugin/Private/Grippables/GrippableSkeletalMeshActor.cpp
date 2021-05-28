@@ -608,7 +608,7 @@ void AGrippableSkeletalMeshActor::OnRep_AttachmentReplication()
 	{
 		if (RootComponent)
 		{
-			USceneComponent* AttachParentComponent = (AttachmentWeldReplication.AttachComponent != nullptr) ? AttachmentWeldReplication.AttachComponent.Get() : AttachmentWeldReplication.AttachParent->GetRootComponent();
+			USceneComponent* AttachParentComponent = (AttachmentWeldReplication.AttachComponent != nullptr) ? ToRawPtr(AttachmentWeldReplication.AttachComponent) : AttachmentWeldReplication.AttachParent->GetRootComponent();
 
 			if (AttachParentComponent)
 			{
