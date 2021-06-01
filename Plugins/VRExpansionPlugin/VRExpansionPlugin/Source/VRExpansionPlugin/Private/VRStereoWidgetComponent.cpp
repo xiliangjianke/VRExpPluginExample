@@ -211,7 +211,8 @@ void UVRStereoWidgetRenderComponent::InitWidget()
 	// Don't do any work if Slate is not initialized
 	if (FSlateApplication::IsInitialized())
 	{
-		UWorld* World = GetWorld();
+		if (UWorld* World = GetWorld())
+		{
 
 		if (WidgetClass && Widget == nullptr && World && !World->bIsTearingDown)
 		{
@@ -246,18 +247,15 @@ void UVRStereoWidgetRenderComponent::InitWidget()
 
 			if (Widget && !Widget->IsDesignTime())
 			{
-				if (UWorld* LocalWorld = GetWorld())
+				if (World->IsGameWorld())
 				{
-					if (LocalWorld->IsGameWorld())
-					{
-						UGameInstance* GameInstance = LocalWorld->GetGameInstance();
-						check(GameInstance);
+					UGameInstance* GameInstance = World->GetGameInstance();
+					check(GameInstance);
 
-						UGameViewportClient* GameViewportClient = GameInstance->GetGameViewportClient();
-						if (GameViewportClient)
-						{
-							SlateWindow->AssignParentWidget(GameViewportClient->GetGameViewportWidget());
-						}
+					UGameViewportClient* GameViewportClient = GameInstance->GetGameViewportClient();
+					if (GameViewportClient)
+					{
+						SlateWindow->AssignParentWidget(GameViewportClient->GetGameViewportWidget());
 					}
 				}
 			}
@@ -269,6 +267,7 @@ void UVRStereoWidgetRenderComponent::InitWidget()
 			TSharedRef<SWidget> MyWidget = SlateWidget ? SlateWidget.ToSharedRef() : Widget->TakeWidget();
 			SlateWindow->SetContent(MyWidget);
 		}
+	}
 	}
 }
 
@@ -1013,7 +1012,7 @@ public:
 		Result.bShadowRelevance = IsShadowCast(View);
 		Result.bTranslucentSelfShadow = bCastVolumetricTranslucentShadow;
 		Result.bEditorPrimitiveRelevance = false;
-		Result.bVelocityRelevance = IsMovable() && Result.bOpaque && Result.bRenderInMainPass;
+		Result.bVelocityRelevance = DrawsVelocity() && Result.bOpaque && Result.bRenderInMainPass;
 
 		return Result;
 	}
