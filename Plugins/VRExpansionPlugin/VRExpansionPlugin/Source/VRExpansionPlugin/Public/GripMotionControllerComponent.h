@@ -171,7 +171,7 @@ public:
 	// It is here to access so if you want to set some variables on your override then you can
 	// Due to a bug with instanced variables and parent classes you can't directly edit this in subclass in the details panel
 	UPROPERTY(VisibleAnywhere, Transient, BlueprintReadOnly, Category = "GripMotionController")
-	UVRGripScriptBase* DefaultGripScript;
+		TObjectPtr<UVRGripScriptBase> DefaultGripScript;
 
 	// If true will subtract the HMD's location from the position, useful for if the actors base is set to the HMD location always (simple character).
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GripMotionController")
@@ -838,7 +838,7 @@ public:
 
 	// Keep a hard reference to the drop to avoid deletion errors
 	UPROPERTY()
-	TArray<UObject*> ObjectsWaitingForSocketUpdate;
+	TArray<TObjectPtr<UObject>> ObjectsWaitingForSocketUpdate;
 
 	// Resets the transform of a socketed grip 1 tick later, this is to avoid a race condition with simulating grips.
 	// Their constraint can change the transform before or after the attachment happens if the parent and the child are both simulating.

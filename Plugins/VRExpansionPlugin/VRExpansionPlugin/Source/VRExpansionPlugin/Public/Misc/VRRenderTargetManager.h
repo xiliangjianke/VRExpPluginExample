@@ -334,7 +334,7 @@ public:
 		int32 MaxBytesPerSecondRate;
 
 	UPROPERTY(BlueprintReadOnly, VisibleAnywhere, Category = "RenderTargetManager")
-		UCanvasRenderTarget2D* RenderTarget;
+		TObjectPtr<UCanvasRenderTarget2D> RenderTarget;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "RenderTargetManager")
 		int32 RenderTargetWidth;
@@ -377,6 +377,6 @@ public:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 protected:
-	TQueue<FRenderDataStore*> RenderDataQueue;
+	TQueue<FRenderDataStore *> RenderDataQueue;
 
 };
