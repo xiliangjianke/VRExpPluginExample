@@ -344,19 +344,26 @@ FTransform UHandSocketComponent::GetMeshRelativeTransform(bool bIsRightHand)
 	return ReturnTrans;
 }
 
-FTransform UHandSocketComponent::GetBoneTransformAtTime(UAnimSequence* MyAnimSequence, /*float AnimTime,*/ int BoneIdx, bool bUseRawDataOnly)
+#if WITH_EDITORONLY_DATA
+FTransform UHandSocketComponent::GetBoneTransformAtTime(UAnimSequence* MyAnimSequence, /*float AnimTime,*/ int BoneIdx, FName BoneName, bool bUseRawDataOnly)
 {
 	float tracklen = MyAnimSequence->GetPlayLength();
-	FTransform BoneTransform = FTransform::Identity;
-	const TArray<FTrackToSkeletonMap>& TrackToSkeletonMap = bUseRawDataOnly ? MyAnimSequence->GetRawTrackToSkeletonMapTable() : MyAnimSequence->GetCompressedTrackToSkeletonMapTable();
+	FTransform BoneTransform = FTransform::Identity;	
+	IAnimationDataController& AnimController = MyAnimSequence->GetController();
 
-	if ((TrackToSkeletonMap.Num() > 0) && (TrackToSkeletonMap[0].BoneTreeIndex == 0))
+	if (UAnimDataModel* AnimModel = AnimController.GetModel())
 	{
-		MyAnimSequence->GetBoneTransform(BoneTransform, BoneIdx, /*AnimTime*/ tracklen, bUseRawDataOnly);
-		return BoneTransform;
+		int32 TrackIndex = AnimModel->GetBoneTrackIndexByName(BoneName);
+		if (TrackIndex != INDEX_NONE)
+		{
+			MyAnimSequence->GetBoneTransform(BoneTransform, TrackIndex, /*AnimTime*/ tracklen, bUseRawDataOnly);
+			return BoneTransform;
+		}
 	}
+
 	return FTransform::Identity;
 }
+#endif
 
 void UHandSocketComponent::OnRegister()
 {
@@ -458,7 +465,7 @@ void UHandSocketComponent::PoseVisualizationToAnimation(bool bForceRefresh)
 
 		if (HandTargetAnimation)
 		{
-			BoneTrans = GetBoneTransformAtTime(HandTargetAnimation, /*FLT_MAX,*/ i, false); // true;
+			BoneTrans = GetBoneTransformAtTime(HandTargetAnimation, /*FLT_MAX,*/ i, BonesNames[i], false); // true;
 		}
 		else
 		{

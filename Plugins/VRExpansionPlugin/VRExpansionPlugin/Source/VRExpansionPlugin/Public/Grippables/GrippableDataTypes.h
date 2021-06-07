@@ -14,7 +14,7 @@ public:
 
 	// Add in the is welded property
 	UPROPERTY()
-	bool bIsWelded;
+	bool bIsWelded = false;
 
 	bool NetSerialize(FArchive& Ar, class UPackageMap* Map, bool& bOutSuccess)
 	{

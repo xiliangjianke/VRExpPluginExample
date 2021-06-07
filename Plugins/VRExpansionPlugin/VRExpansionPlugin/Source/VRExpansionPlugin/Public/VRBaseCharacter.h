@@ -29,13 +29,13 @@ struct VREXPANSIONPLUGIN_API FRepMovementVRCharacter : public FRepMovement
 	GENERATED_BODY()
 
 	UPROPERTY(Transient)
-		bool bJustTeleported;
+		bool bJustTeleported = false;
 
 	UPROPERTY(Transient)
-		bool bJustTeleportedGrips;
+		bool bJustTeleportedGrips = false;
 
 	UPROPERTY(Transient)
-		TObjectPtr<AActor> Owner;
+		TObjectPtr<AActor> Owner = nullptr;
 
 	bool NetSerialize(FArchive& Ar, class UPackageMap* Map, bool& bOutSuccess)
 	{

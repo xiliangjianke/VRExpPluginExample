@@ -40,15 +40,15 @@ public:
 
 	// Initial location in "static space" of the interactor on grip - Set in OnGripInit
 	UPROPERTY(BlueprintReadOnly, VisibleAnywhere, Category = "InteractibleData")
-	FVector InitialInteractorLocation;
+	FVector InitialInteractorLocation = FVector::ZeroVector;
 
 	// Initial location of the interactible in the "static space" - Set in OnGripInit
 	UPROPERTY(BlueprintReadOnly, VisibleAnywhere, Category = "InteractibleData")
-	FVector InitialGripLoc;
+	FVector InitialGripLoc = FVector::ZeroVector;
 
 	// Initial location on the interactible of the grip, used for drop calculations - Set in OnGripInit
 	UPROPERTY(BlueprintReadOnly, VisibleAnywhere, Category = "InteractibleData")
-	FVector InitialDropLocation;
+	FVector InitialDropLocation = FVector::ZeroVector;
 
 	// The initial transform in relative space of the grip to us - Set in OnGripInit
 	UPROPERTY(BlueprintReadOnly, VisibleAnywhere, Category = "InteractibleData")

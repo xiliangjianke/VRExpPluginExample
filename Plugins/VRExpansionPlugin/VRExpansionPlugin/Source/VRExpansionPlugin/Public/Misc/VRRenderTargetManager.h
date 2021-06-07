@@ -42,13 +42,13 @@ public:
 		TArray<uint16> UnpackedData;
 
 	UPROPERTY(Transient)
-		uint32 Width;
+		uint32 Width = 0;
 
 	UPROPERTY()
-		uint32 Height;
+		uint32 Height = 0;
 
 	UPROPERTY(Transient)
-		bool bIsZipped;
+		bool bIsZipped = false;
 
 	//UPROPERTY()
 	//	bool bJPG;
@@ -124,22 +124,22 @@ struct FRenderManagerOperation {
 public:
 
 	UPROPERTY()
-		uint32 OwnerID;
+		uint32 OwnerID = 0;
 
 	UPROPERTY()
-	ERenderManagerOperationType OperationType;
+	ERenderManagerOperationType OperationType = ERenderManagerOperationType::Op_LineDraw;
 
 	UPROPERTY()
-	FColor Color;
+	FColor Color = FColor::White;
 
 	UPROPERTY()
-	FVector2D P1;
+	FVector2D P1 = FVector2D::ZeroVector;
 
 	UPROPERTY()
-	FVector2D P2;
+	FVector2D P2 = FVector2D::ZeroVector;
 
 	UPROPERTY()
-		uint32 Thickness;
+		uint32 Thickness = 0;
 
 	UPROPERTY()
 	TArray<FRenderManagerTri> Tris;

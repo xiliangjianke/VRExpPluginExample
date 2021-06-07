@@ -3,6 +3,7 @@
 #include "Grippables/GrippablePhysicsReplication.h"
 #include "UObject/ObjectMacros.h"
 #include "UObject/Interface.h"
+#include "DrawDebugHelpers.h"
 #if WITH_CHAOS
 #include "Chaos/ChaosMarshallingManager.h"
 #include "PhysicsProxy/SingleParticlePhysicsProxy.h"
@@ -55,7 +56,7 @@ FPhysicsReplicationVR::~FPhysicsReplicationVR()
 }
 
 
-void ComputeDeltas(const FVector& CurrentPos, const FQuat& CurrentQuat, const FVector& TargetPos, const FQuat& TargetQuat, FVector& OutLinDiff, float& OutLinDiffSize,
+void ComputeDeltasVR(const FVector& CurrentPos, const FQuat& CurrentQuat, const FVector& TargetPos, const FQuat& TargetQuat, FVector& OutLinDiff, float& OutLinDiffSize,
 	FVector& OutAngDiffAxis, float& OutAngDiff, float& OutAngDiffSize)
 {
 	OutLinDiff = TargetPos - CurrentPos;
@@ -146,7 +147,7 @@ void FPhysicsReplicationVR::ApplyAsyncDesiredStateVR(const float DeltaSeconds, c
 				FVector AngDiffAxis;
 				float AngDiff;
 				float AngDiffSize;
-				ComputeDeltas(CurrentState.Position, CurrentState.Quaternion, TargetPos, TargetQuat, LinDiff, LinDiffSize, AngDiffAxis, AngDiff, AngDiffSize);
+				ComputeDeltasVR(CurrentState.Position, CurrentState.Quaternion, TargetPos, TargetQuat, LinDiff, LinDiffSize, AngDiffAxis, AngDiff, AngDiffSize);
 
 				const FVector NewLinVel = FVector(State.LinearVelocity) + (LinDiff * LinearVelocityCoefficient * DeltaSeconds);
 				const FVector NewAngVel = FVector(State.AngularVelocity) + (AngDiffAxis * AngDiff * AngularVelocityCoefficient * DeltaSeconds);
@@ -322,7 +323,7 @@ bool FPhysicsReplicationVR::ApplyRigidBodyState(float DeltaSeconds, FBodyInstanc
 
 	float AngDiffSize;
 
-	ComputeDeltas(CurrentState.Position, CurrentState.Quaternion, TargetPos, TargetQuat, LinDiff, LinDiffSize, AngDiffAxis, AngDiff, AngDiffSize);
+	ComputeDeltasVR(CurrentState.Position, CurrentState.Quaternion, TargetPos, TargetQuat, LinDiff, LinDiffSize, AngDiffAxis, AngDiff, AngDiffSize);
 
 	/////// ACCUMULATE ERROR IF NOT APPROACHING SOLUTION ///////
 
