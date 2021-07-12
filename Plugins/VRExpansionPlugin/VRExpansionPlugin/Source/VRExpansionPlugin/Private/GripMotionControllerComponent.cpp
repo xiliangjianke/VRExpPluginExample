@@ -2686,9 +2686,17 @@ bool UGripMotionControllerComponent::NotifyGrip(FBPActorGripInformation &NewGrip
 	switch (NewGrip.GripCollisionType)
 	{
 	case EGripCollisionType::InteractiveCollisionWithPhysics:
-	case EGripCollisionType::InteractiveHybridCollisionWithPhysics:
 	case EGripCollisionType::ManipulationGrip:
 	case EGripCollisionType::ManipulationGripWithWristTwist:
+	{
+		if (bHasMovementAuthority)
+		{
+			SetUpPhysicsHandle(NewGrip);
+		}
+	} break;
+
+
+	case EGripCollisionType::InteractiveHybridCollisionWithPhysics:
 	{
 		if (bHasMovementAuthority)
 		{
@@ -2731,8 +2739,19 @@ bool UGripMotionControllerComponent::NotifyGrip(FBPActorGripInformation &NewGrip
 	case EGripCollisionType::InteractiveCollisionWithSweep:
 	default: 
 	{
+
 		if (root)
-			root->SetSimulatePhysics(false);
+		{
+			if (root->IsSimulatingPhysics())
+			{
+				root->SetSimulatePhysics(false);
+			}
+
+			if(root->GetAttachParent())
+			{
+				root->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
+			}
+		}
 
 		// Move it to the correct location automatically
 		if (bHasMovementAuthority)
