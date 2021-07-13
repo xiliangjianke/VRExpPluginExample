@@ -216,12 +216,21 @@ void UVRExpansionFunctionLibrary::GetGripSlotInRangeByTypeName(FName SlotType, A
 					{
 						float vecLen = FVector::DistSquared(RelativeWorldLocation, SocketComp->GetRelativeLocation());
 
-						float RangeVal = (SocketComp->OverrideDistance > 0.0f ? FMath::Square(SocketComp->OverrideDistance) : MaxRange);
-						if (RangeVal >= vecLen && (ClosestSlotDistance < 0.0f || vecLen < ClosestSlotDistance))
+						if (SocketComp->bAlwaysInRange)
 						{
 							TargetHandSocket = SocketComp;
 							ClosestSlotDistance = vecLen;
 							bHadSlotInRange = true;
+						}
+						else
+						{
+							float RangeVal = (SocketComp->OverrideDistance > 0.0f ? FMath::Square(SocketComp->OverrideDistance) : MaxRange);
+							if (RangeVal >= vecLen && (ClosestSlotDistance < 0.0f || vecLen < ClosestSlotDistance))
+							{
+								TargetHandSocket = SocketComp;
+								ClosestSlotDistance = vecLen;
+								bHadSlotInRange = true;
+							}
 						}
 					}
 				}
@@ -294,13 +303,21 @@ void UVRExpansionFunctionLibrary::GetGripSlotInRangeByTypeName_Component(FName S
 				if (SocketComp->SlotPrefix.ToString().Contains(GripIdentifier, ESearchCase::IgnoreCase, ESearchDir::FromStart))
 				{
 					float vecLen = FVector::DistSquared(RelativeWorldLocation, SocketComp->GetRelativeLocation());
-
-					float RangeVal = (SocketComp->OverrideDistance > 0.0f ? FMath::Square(SocketComp->OverrideDistance) : MaxRange);
-					if (RangeVal >= vecLen && (ClosestSlotDistance < 0.0f || vecLen < ClosestSlotDistance))
+					if (SocketComp->bAlwaysInRange)
 					{
 						TargetHandSocket = SocketComp;
 						ClosestSlotDistance = vecLen;
 						bHadSlotInRange = true;
+					}
+					else
+					{
+						float RangeVal = (SocketComp->OverrideDistance > 0.0f ? FMath::Square(SocketComp->OverrideDistance) : MaxRange);
+						if (RangeVal >= vecLen && (ClosestSlotDistance < 0.0f || vecLen < ClosestSlotDistance))
+						{
+							TargetHandSocket = SocketComp;
+							ClosestSlotDistance = vecLen;
+							bHadSlotInRange = true;
+						}
 					}
 				}
 			}
