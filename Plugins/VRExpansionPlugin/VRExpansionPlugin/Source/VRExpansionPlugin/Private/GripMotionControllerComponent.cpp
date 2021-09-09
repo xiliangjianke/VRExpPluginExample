@@ -5600,8 +5600,8 @@ bool UGripMotionControllerComponent::SetUpPhysicsHandle(const FBPActorGripInform
 			}
 			
 #if WITH_CHAOS
-			Stiffness *= Chaos::ConstraintSettings::SoftLinearStiffnessScale();
-			Damping *= Chaos::ConstraintSettings::SoftLinearDampingScale();
+			Stiffness *= Chaos::ConstraintSettings::LinearDriveStiffnessScale();
+			Damping *= Chaos::ConstraintSettings::LinearDriveDampingScale();
 			AngularStiffness *= Chaos::ConstraintSettings::AngularDriveStiffnessScale();
 			AngularDamping *= Chaos::ConstraintSettings::AngularDriveDampingScale();
 #endif
@@ -5812,8 +5812,8 @@ bool UGripMotionControllerComponent::SetGripConstraintStiffnessAndDamping(const 
 					}
 
 #if WITH_CHAOS
-					Stiffness *= Chaos::ConstraintSettings::SoftLinearStiffnessScale();
-					Damping *= Chaos::ConstraintSettings::SoftLinearDampingScale();
+					Stiffness *= Chaos::ConstraintSettings::LinearDriveStiffnessScale();
+					Damping *= Chaos::ConstraintSettings::LinearDriveDampingScale();
 					AngularStiffness *= Chaos::ConstraintSettings::AngularDriveStiffnessScale();
 					AngularDamping *= Chaos::ConstraintSettings::AngularDriveDampingScale();
 #endif
