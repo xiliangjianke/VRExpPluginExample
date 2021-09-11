@@ -1485,7 +1485,7 @@ bool UVRRootComponent::ConvertSweptOverlapsToCurrentOverlaps(
 	checkSlow(SweptOverlapsIndex >= 0);
 
 	// Override location check with our own
-	GenerateOffsetToWorld();
+	//GenerateOffsetToWorld();
 	FVector EndLocationVR = OffsetComponentToWorld.GetLocation();
 
 
