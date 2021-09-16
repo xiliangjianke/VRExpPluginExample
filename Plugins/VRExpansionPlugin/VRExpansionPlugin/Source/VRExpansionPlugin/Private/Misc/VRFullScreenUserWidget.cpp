@@ -22,6 +22,10 @@
 #include "Widgets/Layout/SDPIScaler.h"
 #include "Widgets/SViewport.h"
 
+#include "ISpectatorScreenController.h"
+#include "IXRTrackingSystem.h"
+#include "IHeadMountedDisplay.h"
+
 #if WITH_EDITOR
 #include "LevelEditor.h"
 #include "Modules/ModuleManager.h"
@@ -244,14 +248,45 @@ FVRFullScreenUserWidget_PostProcess::FVRFullScreenUserWidget_PostProcess()
 	, PostProcessMaterialInstance(nullptr)
 	, WidgetRenderer(nullptr)
 	, CurrentWidgetDrawSize(FIntPoint::ZeroValue)
+	, bRenderToTextureOnly(true)
 {
 }
 
 bool FVRFullScreenUserWidget_PostProcess::Display(UWorld* World, UUserWidget* Widget, bool bInRenderToTextureOnly, float InDPIScale)
 {
+
 	bRenderToTextureOnly = bInRenderToTextureOnly;
 
 	bool bOk = CreateRenderer(World, Widget, InDPIScale);
+
+	if (bRenderToTextureOnly && WidgetRenderTarget)
+	{
+		IHeadMountedDisplay* HMD = GEngine->XRSystem.IsValid() ? GEngine->XRSystem->GetHMDDevice() : nullptr;
+		ISpectatorScreenController* Controller = nullptr;
+		if (HMD)
+		{
+			Controller = HMD->GetSpectatorScreenController();
+		}
+
+		if (Controller)
+		{
+			if (Controller->GetSpectatorScreenMode() != ESpectatorScreenMode::TexturePlusEye)
+			{
+				Controller->SetSpectatorScreenMode(ESpectatorScreenMode::TexturePlusEye);
+				FSpectatorScreenModeTexturePlusEyeLayout Layout;
+				Layout.bClearBlack = true;
+				Layout.bDrawEyeFirst = true;
+				Layout.bUseAlpha = true;
+				Layout.EyeRectMin = FVector2D(0.f, 0.f);
+				Layout.EyeRectMax = FVector2D(1.f, 1.f);
+				Layout.TextureRectMin = FVector2D(0.f, 0.f);
+				Layout.TextureRectMax = FVector2D(0.f, 0.f);
+				Controller->SetSpectatorScreenModeTexturePlusEyeLayout(Layout);
+				Controller->SetSpectatorScreenTexture(WidgetRenderTarget);
+			}
+		}
+	}
+
 	if (!bRenderToTextureOnly)
 	{
 		bOk &= CreatePostProcessComponent(World);
@@ -265,6 +300,25 @@ void FVRFullScreenUserWidget_PostProcess::Hide(UWorld* World)
 	if (!bRenderToTextureOnly)
 	{
 		ReleasePostProcessComponent();
+	}
+
+	if (bRenderToTextureOnly)
+	{
+		IHeadMountedDisplay* HMD = GEngine->XRSystem.IsValid() ? GEngine->XRSystem->GetHMDDevice() : nullptr;
+		ISpectatorScreenController* Controller = nullptr;
+		if (HMD)
+		{
+			Controller = HMD->GetSpectatorScreenController();
+		}
+
+		if (Controller)
+		{
+			if (Controller->GetSpectatorScreenMode() == ESpectatorScreenMode::TexturePlusEye)
+			{
+				Controller->SetSpectatorScreenMode(ESpectatorScreenMode::SingleEye);
+				Controller->SetSpectatorScreenTexture(nullptr);
+			}
+		}
 	}
 
 	ReleaseRenderer();
