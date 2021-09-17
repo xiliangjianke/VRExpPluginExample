@@ -240,7 +240,7 @@ FVRFullScreenUserWidget_PostProcess::FVRFullScreenUserWidget_PostProcess()
 	, WidgetDrawSize(FIntPoint(640, 360))
 	, bWindowFocusable(true)
 	, WindowVisibility(EWindowVisibility::SelfHitTestInvisible)
-	, bReceiveHardwareInput(false)
+	, bReceiveHardwareInput(true)
 	, RenderTargetBackgroundColor(FLinearColor(0.0f, 0.0f, 0.0f, 1.0f))
 	, RenderTargetBlendMode(EWidgetBlendMode::Masked)
 	, WidgetRenderTarget(nullptr)
@@ -248,14 +248,14 @@ FVRFullScreenUserWidget_PostProcess::FVRFullScreenUserWidget_PostProcess()
 	, PostProcessMaterialInstance(nullptr)
 	, WidgetRenderer(nullptr)
 	, CurrentWidgetDrawSize(FIntPoint::ZeroValue)
-	, bRenderToTextureOnly(true)
 {
+	bRenderToTextureOnly = true;
 }
 
 bool FVRFullScreenUserWidget_PostProcess::Display(UWorld* World, UUserWidget* Widget, bool bInRenderToTextureOnly, float InDPIScale)
 {
 
-	bRenderToTextureOnly = bInRenderToTextureOnly;
+	//bRenderToTextureOnly = bInRenderToTextureOnly;
 
 	bool bOk = CreateRenderer(World, Widget, InDPIScale);
 
@@ -280,7 +280,7 @@ bool FVRFullScreenUserWidget_PostProcess::Display(UWorld* World, UUserWidget* Wi
 				Layout.EyeRectMin = FVector2D(0.f, 0.f);
 				Layout.EyeRectMax = FVector2D(1.f, 1.f);
 				Layout.TextureRectMin = FVector2D(0.f, 0.f);
-				Layout.TextureRectMax = FVector2D(0.f, 0.f);
+				Layout.TextureRectMax = FVector2D(1.f, 1.f);
 				Controller->SetSpectatorScreenModeTexturePlusEyeLayout(Layout);
 				Controller->SetSpectatorScreenTexture(WidgetRenderTarget);
 			}
@@ -452,6 +452,35 @@ void FVRFullScreenUserWidget_PostProcess::TickRenderer(UWorld* World, float Delt
 	check(World);
 	if (WidgetRenderTarget)
 	{
+
+		if (bRenderToTextureOnly)
+		{
+			IHeadMountedDisplay* HMD = GEngine->XRSystem.IsValid() ? GEngine->XRSystem->GetHMDDevice() : nullptr;
+			ISpectatorScreenController* Controller = nullptr;
+			if (HMD)
+			{
+				Controller = HMD->GetSpectatorScreenController();
+			}
+
+			if (Controller)
+			{
+				if (Controller->GetSpectatorScreenMode() != ESpectatorScreenMode::TexturePlusEye)
+				{
+					Controller->SetSpectatorScreenMode(ESpectatorScreenMode::TexturePlusEye);
+					FSpectatorScreenModeTexturePlusEyeLayout Layout;
+					Layout.bClearBlack = true;
+					Layout.bDrawEyeFirst = true;
+					Layout.bUseAlpha = true;
+					Layout.EyeRectMin = FVector2D(0.f, 0.f);
+					Layout.EyeRectMax = FVector2D(1.f, 1.f);
+					Layout.TextureRectMin = FVector2D(0.f, 0.f);
+					Layout.TextureRectMax = FVector2D(1.f, 1.f);
+					Controller->SetSpectatorScreenModeTexturePlusEyeLayout(Layout);
+					Controller->SetSpectatorScreenTexture(WidgetRenderTarget);
+				}
+			}
+		}
+
 		const float DrawScale = 1.0f;
 
 		const FIntPoint NewCalculatedWidgetSize = CalculateWidgetDrawSize(World);
@@ -692,7 +721,7 @@ bool UVRFullScreenUserWidget::Display(UWorld* InWorld)
 		}
 		else if ((CurrentDisplayType == EVRWidgetDisplayType::PostProcess) /*|| (CurrentDisplayType == EVRWidgetDisplayType::Composure)*/)
 		{
-			bWasAdded = PostProcessDisplayType.Display(InWorld, Widget, /*(CurrentDisplayType == EVRWidgetDisplayType::Composure)*/false, DPIScale);
+			bWasAdded = PostProcessDisplayType.Display(InWorld, Widget, /*(CurrentDisplayType == EVRWidgetDisplayType::Composure)*/true, DPIScale);
 		}
 
 		if (bWasAdded)

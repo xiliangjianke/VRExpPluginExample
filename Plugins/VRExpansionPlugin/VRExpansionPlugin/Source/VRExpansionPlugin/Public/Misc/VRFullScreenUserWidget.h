@@ -149,6 +149,10 @@ public:
 	UPROPERTY(Transient)
     UTextureRenderTarget2D* WidgetRenderTarget;
 
+	/** Only render to the UTextureRenderTarget2D - do not output to the final viewport. */
+	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = PostProcess)
+		bool bRenderToTextureOnly;
+
 #if WITH_EDITOR
 	/** If set, use this viewport instead of GetFirstActiveLevelViewport() */
 	TWeakPtr<SLevelViewport> TargetViewport;
@@ -177,8 +181,6 @@ private:
 	/** Hit tester when we want the hardware input. */
 	TSharedPtr<FVRWidgetPostProcessHitTester> CustomHitTestPath;
 
-	/** Only render to the UTextureRenderTarget2D - do not output to the final viewport. */
-	bool bRenderToTextureOnly;
 };
 
 /**
