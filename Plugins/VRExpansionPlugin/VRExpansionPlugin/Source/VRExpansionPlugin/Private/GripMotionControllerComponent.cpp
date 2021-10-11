@@ -2330,7 +2330,12 @@ void UGripMotionControllerComponent::DropAndSocket_Implementation(const FBPActor
 					}
 				}
 
-				IVRGripInterface::Execute_OnGripRelease(pActor, this, NewDrop, true);
+				if (IVRGripInterface* GripInterface = Cast<IVRGripInterface>(pActor))
+				{
+					GripInterface->Execute_OnGripRelease(pActor, this, NewDrop, true);
+					GripInterface->Native_NotifyThrowGripDelegates(this, false, NewDrop, true);
+				}
+				//IVRGripInterface::Execute_OnGripRelease(pActor, this, NewDrop, true);
 			}
 		}
 	}break;
@@ -2392,7 +2397,12 @@ void UGripMotionControllerComponent::DropAndSocket_Implementation(const FBPActor
 					}
 				}
 
-				IVRGripInterface::Execute_OnGripRelease(root, this, NewDrop, true);
+				if (IVRGripInterface* GripInterface = Cast<IVRGripInterface>(root))
+				{
+					GripInterface->Execute_OnGripRelease(root, this, NewDrop, true);
+					GripInterface->Native_NotifyThrowGripDelegates(this, false, NewDrop, true);
+				}
+				//IVRGripInterface::Execute_OnGripRelease(root, this, NewDrop, true);
 			}
 
 			// Call on child grip release on attached parent component
@@ -2511,7 +2521,19 @@ bool UGripMotionControllerComponent::NotifyGrip(FBPActorGripInformation &NewGrip
 				}
 
 				uint8 GripID = NewGrip.GripID;
-				IVRGripInterface::Execute_OnGrip(pActor, this, NewGrip);
+				//IVRGripInterface::Execute_OnGrip(pActor, this, NewGrip);
+				if (IVRGripInterface* GripInterface = Cast<IVRGripInterface>(pActor))
+				{
+					GripInterface->Execute_OnGrip(pActor, this, NewGrip);
+
+					if (!LocallyGrippedObjects.Contains(GripID) && !GrippedObjects.Contains(GripID))
+					{
+						return false;
+					}
+
+					GripInterface->Native_NotifyThrowGripDelegates(this, true, NewGrip, false);
+				}
+
 				if (!LocallyGrippedObjects.Contains(GripID) && !GrippedObjects.Contains(GripID))
 				{
 					return false;
@@ -2583,7 +2605,20 @@ bool UGripMotionControllerComponent::NotifyGrip(FBPActorGripInformation &NewGrip
 				}
 				
 				uint8 GripID = NewGrip.GripID;
-				IVRGripInterface::Execute_OnGrip(root, this, NewGrip);
+				//IVRGripInterface::Execute_OnGrip(root, this, NewGrip);
+
+				if (IVRGripInterface* GripInterface = Cast<IVRGripInterface>(root))
+				{
+					GripInterface->Execute_OnGrip(root, this, NewGrip);
+
+					if (!LocallyGrippedObjects.Contains(GripID) && !GrippedObjects.Contains(GripID))
+					{
+						return false;
+					}
+
+					GripInterface->Native_NotifyThrowGripDelegates(this, true, NewGrip, false);
+				}
+
 				if (!LocallyGrippedObjects.Contains(GripID) && !GrippedObjects.Contains(GripID))
 				{
 					return false;
@@ -3157,7 +3192,12 @@ void UGripMotionControllerComponent::Drop_Implementation(const FBPActorGripInfor
 					}
 				}
 
-				IVRGripInterface::Execute_OnGripRelease(pActor, this, NewDrop, false);
+				if (IVRGripInterface* GripInterface = Cast<IVRGripInterface>(pActor))
+				{
+					GripInterface->Execute_OnGripRelease(pActor, this, NewDrop, false);
+					GripInterface->Native_NotifyThrowGripDelegates(this, false, NewDrop, false);
+				}
+				//IVRGripInterface::Execute_OnGripRelease(pActor, this, NewDrop, false);
 			}
 		}
 	}break;
@@ -3274,7 +3314,12 @@ void UGripMotionControllerComponent::Drop_Implementation(const FBPActorGripInfor
 					}
 				}
 
-				IVRGripInterface::Execute_OnGripRelease(root, this, NewDrop, false);
+				if (IVRGripInterface* GripInterface = Cast<IVRGripInterface>(root))
+				{
+					GripInterface->Execute_OnGripRelease(root, this, NewDrop, false);
+					GripInterface->Native_NotifyThrowGripDelegates(this, false, NewDrop, false);
+				}
+				//IVRGripInterface::Execute_OnGripRelease(root, this, NewDrop, false);
 			}
 
 			// Call on child grip release on attached parent component

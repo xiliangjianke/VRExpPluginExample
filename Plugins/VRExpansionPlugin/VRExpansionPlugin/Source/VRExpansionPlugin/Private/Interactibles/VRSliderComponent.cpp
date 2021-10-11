@@ -497,7 +497,7 @@ void UVRSliderComponent::OnGrip_Implementation(UGripMotionControllerComponent * 
 	if (bUpdateInTick)
 		SetComponentTickEnabled(true);
 
-	OnGripped.Broadcast(GrippingController, GripInformation);
+	//OnGripped.Broadcast(GrippingController, GripInformation);
 
 }
 
@@ -533,7 +533,7 @@ void UVRSliderComponent::OnGripRelease_Implementation(UGripMotionControllerCompo
 		bReplicateMovement = bOriginalReplicatesMovement;
 	}
 
-	OnDropped.Broadcast(ReleasingController, GripInformation, bWasSocketed);
+	//OnDropped.Broadcast(ReleasingController, GripInformation, bWasSocketed);
 }
 
 void UVRSliderComponent::SetIsLocked(bool bNewLockedState)
@@ -662,6 +662,18 @@ void UVRSliderComponent::IsHeld_Implementation(TArray<FBPGripPair> & CurHoldingC
 	else
 	{
 		bCurIsHeld = false;
+	}
+}
+
+void UVRSliderComponent::Native_NotifyThrowGripDelegates(UGripMotionControllerComponent* Controller, bool bGripped, const FBPActorGripInformation& GripInformation, bool bWasSocketed)
+{
+	if (bGripped)
+	{
+		OnGripped.Broadcast(Controller, GripInformation);
+	}
+	else
+	{
+		OnDropped.Broadcast(Controller, GripInformation, bWasSocketed);
 	}
 }
 
