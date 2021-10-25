@@ -169,7 +169,7 @@ void AVRBaseCharacter::PostInitializeComponents()
 	}
 }
 
-void AVRBaseCharacter::CacheInitialMeshOffset(FVector MeshRelativeLocation, FRotator MeshRelativeRotation)
+/*void AVRBaseCharacter::CacheInitialMeshOffset(FVector MeshRelativeLocation, FRotator MeshRelativeRotation)
 {
 	BaseTranslationOffset = MeshRelativeLocation;
 	BaseRotationOffset = MeshRelativeRotation.Quaternion();
@@ -189,7 +189,7 @@ void AVRBaseCharacter::CacheInitialMeshOffset(FVector MeshRelativeLocation, FRot
 		}
 	}
 #endif
-}
+}*/
 
 void AVRBaseCharacter::GetLifetimeReplicatedProps(TArray< class FLifetimeProperty > & OutLifetimeProps) const
 {
